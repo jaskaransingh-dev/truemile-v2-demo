@@ -4,6 +4,7 @@ import cron from 'node-cron';
 import { prisma } from '../db';
 import { GmailSyncService } from '../gmail/sync.service';
 import { OutlookSyncService } from '../outlook/sync.service';
+import { DispatchReplyPoller } from '../dispatch/reply-poller.service';
 
 export class PollingScheduler {
   private static cronJob: cron.ScheduledTask | null = null;
@@ -94,6 +95,8 @@ export class PollingScheduler {
     results.failed++;
   }
 }
+
+      await DispatchReplyPoller.pollBrokerReplies();
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       console.log(`\n=== Sync cycle complete ===`);

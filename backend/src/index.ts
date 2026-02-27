@@ -12,6 +12,8 @@ import loadOptimizerRoutes from './routes/load-optimizer.routes';
 import expenseRoutes from './routes/expense.routes';
 import fleetFinancialsRoutes from './routes/fleet-financials';
 import dispatchRoutes from './routes/dispatch.routes';
+import dispatchEngineRoutes from './routes/dispatch-engine.routes';
+import companiesRoutes from './routes/companies.routes';
 // Rigby routes
 import rigbyRoutes from './routes/rigby';
 import fleetRoutes from './routes/fleet';
@@ -35,14 +37,14 @@ app.use(cors({
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], // ADD PATCH
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Extension-Key']
 }));
 
 // Additional CORS headers for compatibility
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:5173');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS'); // ADD PATCH
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Extension-Key');
   res.header('Access-Control-Allow-Credentials', 'true');
   
   if (req.method === 'OPTIONS') {
@@ -87,6 +89,7 @@ app.use('/api/optimizer', loadOptimizerRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/profit', expenseRoutes);
 app.use('/api/fleet-financials', fleetFinancialsRoutes);
+app.use('/api/companies', companiesRoutes);
 
 // Rigby routes
 app.use('/api/rigby', rigbyRoutes);
@@ -95,6 +98,7 @@ app.use('/api/upload', uploadRoutes);
 
 // Dispatch routes
 app.use('/api/dispatch', dispatchRoutes);
+app.use('/api', dispatchEngineRoutes);
 
 // ============ Error Handling ============
 app.use((req: Request, res: Response) => {

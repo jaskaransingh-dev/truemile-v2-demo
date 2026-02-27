@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "TrueMile DAT Ingest",
+  "version": "0.1.0",
+  "description": "Event-driven DAT load extraction for TrueMile dispatch MVP.",
+  "permissions": ["storage", "activeTab", "tabs"],
+  "host_permissions": ["https://one.dat.com/*", "http://localhost:3000/*", "https://api.truemile.ai/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "TrueMile DAT Ingest",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://one.dat.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

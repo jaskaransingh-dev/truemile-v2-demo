@@ -187,6 +187,10 @@ model Fleet {
   loads     FleetLoad[]
   trailers  Trailer[]
   trucks    Truck[]
+  datIntegrationKeys DATIntegrationKey[]
+  datIngestBatches DATIngestBatch[]
+  datLoadSnapshots DATLoadSnapshot[]
+  loadRecommendations LoadRecommendation[]
 }
 
 model Truck {
@@ -244,6 +248,7 @@ model Driver {
   id                String    @id @default(cuid())
   fleetId           String
   name              String
+  trailerType       TrailerType?
   payStructure      String
   payRate           Float
   preferredSchedule String?
@@ -254,10 +259,12 @@ model Driver {
   medCardExpiry     DateTime?
   drugTestDate      DateTime?
   status            String    @default("active")
+  currentStatus     DriverStatus @default(AVAILABLE)
   notes             String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   fleet             Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  recommendations   LoadRecommendation[]
 
   @@index([fleetId])
 }
@@ -656,4 +663,195 @@ enum MessageSyncStatus {
   PENDING
   SYNCED
   FAILED
+}
+
+enum TrailerType {
+  DRY_VAN
+  REEFER
+  FLATBED
+}
+
+enum DriverStatus {
+  AVAILABLE
+  LOADED
+  HOME
+  MAINTENANCE
+}
+
+enum RecommendationStatus {
+  SELECTED
+  OUTREACH_SENT
+  BROKER_ACCEPTED
+  BROKER_COUNTERED
+  BROKER_REJECTED
+  DISPATCHER_APPROVED
+  DISPATCHER_REJECTED
+  FAILED
+}
+
+enum OutreachMethod {
+  EMAIL
+}
+
+enum OutreachStatus {
+  PENDING
+  SENT
+  REPLIED
+  FAILED
+}
+
+enum ReplyClassification {
+  ACCEPTED
+  COUNTER
+  REJECTED
+  OTHER
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model DATIntegrationKey {
+  id         String   @id @default(uuid())
+  carrierId  String
+  carrier    Fleet    @relation(fields: [carrierId], references: [id], onDelete: Cascade)
+  keyHash    String   @unique
+  name       String
+  isActive   Boolean  @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([carrierId, isActive])
+}
+
+model DATIngestBatch {
+  id                String   @id @default(uuid())
+  carrierId         String
+  carrier           Fleet    @relation(fields: [carrierId], references: [id], onDelete: Cascade)
+  ingestId          String
+  extensionVersion  String
+  receivedCount     Int
+  insertedCount     Int
+  duplicateCount    Int
+  errorCount        Int
+  snapshotTimestamp DateTime
+  createdAt         DateTime @default(now())
+
+  snapshots         DATLoadSnapshot[]
+
+  @@unique([carrierId, ingestId])
+  @@index([carrierId, createdAt])
+}
+
+model DATLoadSnapshot {
+  id                String   @id @default(uuid())
+  carrierId         String
+  carrier           Fleet    @relation(fields: [carrierId], references: [id], onDelete: Cascade)
+  batchId           String
+  batch             DATIngestBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  origin            String
+  destination       String
+  pickupDate        String
+  deliveryDate      String
+  miles             Int
+  rate              Float
+  brokerName        String?
+  brokerEmail       String?
+  brokerPhone       String?
+  trailerType       TrailerType
+
+  hash              String
+  snapshotTimestamp DateTime
+  createdAt         DateTime @default(now())
+
+  recommendations   LoadRecommendation[]
+
+  @@unique([carrierId, hash])
+  @@index([carrierId, trailerType, snapshotTimestamp])
+}
+
+model LoadRecommendation {
+  id                String               @id @default(uuid())
+  carrierId         String
+  carrier           Fleet                @relation(fields: [carrierId], references: [id], onDelete: Cascade)
+  driverId          String
+  driver            Driver               @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  datLoadSnapshotId String
+  datLoadSnapshot   DATLoadSnapshot      @relation(fields: [datLoadSnapshotId], references: [id], onDelete: Cascade)
+
+  constraintScore   Float
+  status            RecommendationStatus @default(SELECTED)
+
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  outreachAttempts  OutreachAttempt[]
+  approvalRequests  ApprovalRequest[]
+
+  @@unique([carrierId, driverId, datLoadSnapshotId])
+  @@index([carrierId, status])
+}
+
+model OutreachAttempt {
+  id                String            @id @default(uuid())
+  recommendationId  String
+  recommendation    LoadRecommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+
+  method            OutreachMethod
+  status            OutreachStatus    @default(PENDING)
+
+  toEmail           String?
+  subject           String?
+  messageBody       String?
+
+  gmailMessageId    String?
+  gmailThreadId     String?
+
+  sentAt            DateTime?
+  repliedAt         DateTime?
+  createdAt         DateTime          @default(now())
+
+  replies           BrokerReply[]
+
+  @@index([recommendationId])
+  @@index([gmailMessageId])
+  @@index([gmailThreadId])
+}
+
+model BrokerReply {
+  id                String              @id @default(uuid())
+  outreachAttemptId String
+  outreachAttempt   OutreachAttempt     @relation(fields: [outreachAttemptId], references: [id], onDelete: Cascade)
+
+  classification    ReplyClassification
+  rawBody           String
+  extractedTerms    Json?
+  receivedAt        DateTime
+  createdAt         DateTime            @default(now())
+
+  gmailMessageId    String?             @unique
+
+  @@index([outreachAttemptId])
+}
+
+model ApprovalRequest {
+  id               String            @id @default(uuid())
+  recommendationId String
+  recommendation   LoadRecommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+
+  dispatcherEmail  String
+  status           ApprovalStatus    @default(PENDING)
+  message          String
+
+  approvedAt       DateTime?
+  rejectedAt       DateTime?
+  createdAt        DateTime          @default(now())
+
+  tokenHash        String            @unique
+  tokenExpiresAt   DateTime
+
+  @@index([dispatcherEmail, status])
 }
