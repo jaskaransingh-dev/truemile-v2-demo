@@ -13,7 +13,6 @@ import expenseRoutes from './routes/expense.routes';
 import fleetFinancialsRoutes from './routes/fleet-financials';
 import dispatchRoutes from './routes/dispatch.routes';
 import dispatchEngineRoutes from './routes/dispatch-engine.routes';
-import companiesRoutes from './routes/companies.routes';
 // Rigby routes
 import rigbyRoutes from './routes/rigby';
 import fleetRoutes from './routes/fleet';
@@ -89,7 +88,6 @@ app.use('/api/optimizer', loadOptimizerRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/profit', expenseRoutes);
 app.use('/api/fleet-financials', fleetFinancialsRoutes);
-app.use('/api/companies', companiesRoutes);
 
 // Rigby routes
 app.use('/api/rigby', rigbyRoutes);

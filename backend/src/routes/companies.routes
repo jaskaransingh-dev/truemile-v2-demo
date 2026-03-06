@@ -1,0 +1,32 @@
+import { Router, Request, Response } from 'express';
+import { Pool } from 'pg';
+
+const router = Router();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const { name, mc_number, user_id, fleet_size } = req.body;
+
+    if (!name || !user_id) {
+      return res.status(400).json({ error: 'Company name and user_id required' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO companies (name, mc_number, user_id, fleet_size)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (user_id) DO UPDATE SET
+        name = EXCLUDED.name,
+        mc_number = EXCLUDED.mc_number,
+        fleet_size = EXCLUDED.fleet_size
+      RETURNING *
+    `, [name, mc_number, user_id, fleet_size]);
+
+    res.json({ success: true, company: result.rows[0] });
+  } catch (error: any) {
+    console.error('Create company error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+export default router;

@@ -12,7 +12,6 @@ import os from 'os';
 import OpenAI from 'openai';
 import * as XLSX from 'xlsx';
 import { categorizeExpense } from '../services/categorization-rules';
-import { requireAuth, AuthRequest } from '../middleware/auth';
 
 const execAsync = promisify(exec);
 const router = Router();
@@ -783,7 +782,7 @@ async function parseFuelXLSX(buffer: Buffer): Promise<FuelReceipt[]> {
 // DASHBOARD - SHOWS ALL DRIVERS INCLUDING $0 REVENUE
 // ============================================================================
 
-router.get('/dashboard', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/dashboard', async (req: Request, res: Response) => {
   try {
     const { period = 'current_month', startDate, endDate, factoringRate = '2.2' } = req.query;
     const factoringPercent = parseFloat(factoringRate as string) / 100;
@@ -826,7 +825,6 @@ router.get('/dashboard', requireAuth, async (req: AuthRequest, res: Response) =>
   FROM drivers 
   WHERE active = true 
   AND LOWER(name) NOT IN ('john', 'test', 'demo', 'sample')
-  AND company_id = ${req.companyId}
   ORDER BY name
 `);
 
@@ -837,7 +835,6 @@ router.get('/dashboard', requireAuth, async (req: AuthRequest, res: Response) =>
   JOIN drivers d ON l.driver_id = d.id
   JOIN brokers b ON l.broker_id = b.id
   WHERE l.pickup_at IS NOT NULL ${dateFilter}
-  AND l.company_id = ${req.companyId}
   ORDER BY d.name, l.pickup_at ASC
 `);
 
@@ -850,7 +847,6 @@ router.get('/dashboard', requireAuth, async (req: AuthRequest, res: Response) =>
       FROM drivers d
       LEFT JOIN fixed_costs fc ON fc.driver_id = d.id
       WHERE d.active = true
-      AND d.company_id = ${req.companyId}
       GROUP BY d.id, d.name
     `);
 
