@@ -937,3 +937,45 @@ model ApprovalRequest {
 
   @@index([dispatcherEmail, status])
 }
+
+model DispatchRun {
+  id                  String            @id @default(cuid())
+  carrierId           String
+  driverId            String
+  createdAt           DateTime          @default(now())
+
+  /// Raw candidate loads sent to the engine (array of CandidateLoadInput)
+  loadsInput          Json
+
+  /// Driver snapshot at time of run (location, trailerType, cycle config)
+  driverSnapshot      Json
+
+  /// Full engine output: ranked decisions, summary, confidence scores
+  engineOutput        Json
+
+  /// externalId of the load the engine ranked #1 (null if all rejected)
+  topRecommendationId String?
+
+  decision            DispatchDecision?
+
+  @@index([carrierId])
+  @@index([driverId])
+  @@index([createdAt])
+}
+
+model DispatchDecision {
+  id             String      @id @default(cuid())
+  dispatchRunId  String      @unique
+  dispatchRun    DispatchRun @relation(fields: [dispatchRunId], references: [id])
+
+  /// externalId of the load the dispatcher actually chose
+  selectedLoadId String
+
+  /// Whether the dispatcher chose the engine's top recommendation
+  matchedEngine  Boolean
+
+  /// How the selection was recorded
+  source         String      @default("API")
+
+  selectedAt     DateTime    @default(now())
+}

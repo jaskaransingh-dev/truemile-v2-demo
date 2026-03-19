@@ -11,8 +11,10 @@ import profitEngineRoutes from './routes/profit-engine.routes';
 import loadOptimizerRoutes from './routes/load-optimizer.routes';
 import expenseRoutes from './routes/expense.routes';
 import fleetFinancialsRoutes from './routes/fleet-financials';
-import dispatchRoutes from './routes/dispatch.routes';
+import rankLoadsRouter from './routes/dispatch.routes';
 import dispatchEngineRoutes from './routes/dispatch-engine.routes';
+import { authenticateToken } from './middleware/auth.middleware';
+import { tenantScope } from './middleware/tenant.middleware';
 // Rigby routes
 import rigbyRoutes from './routes/rigby';
 import fleetRoutes from './routes/fleet';
@@ -95,7 +97,7 @@ app.use('/api/fleet', fleetRoutes);
 app.use('/api/upload', uploadRoutes);
 
 // Dispatch routes
-app.use('/api/dispatch', dispatchRoutes);
+app.use('/api/dispatch', authenticateToken, tenantScope, rankLoadsRouter);
 app.use('/api', dispatchEngineRoutes);
 
 // ============ Error Handling ============
