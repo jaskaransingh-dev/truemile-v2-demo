@@ -233,7 +233,7 @@ function buildCycleState(
   const msSinceStart    = nowMs - cycleStartDate.getTime();
   const completedCycles = Math.max(0, Math.floor(msSinceStart / msPerFullPeriod));
   const currentAnchorMs = cycleStartDate.getTime() + completedCycles * msPerFullPeriod;
-  const homeDeadline    = new Date(currentAnchorMs + driver.cycleDays * MS_PER_DAY);
+  const homeDeadline    = new Date(currentAnchorMs + driver.cycleDays * MS_PER_DAY + 12 * 60 * 60 * 1000);
   const daysRemaining   = (homeDeadline.getTime() - nowMs) / MS_PER_DAY;
   // Bug 2 fix: isOTR false when driver is in the home window (msIntoCurrentPeriod >= cycleDays)
   const msIntoCurrentPeriod = nowMs - currentAnchorMs;

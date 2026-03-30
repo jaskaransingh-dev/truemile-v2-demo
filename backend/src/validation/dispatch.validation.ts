@@ -84,8 +84,8 @@ function validateLoad(load: unknown, i: number): string[] {
   errs.push(...validateLocation(l.destination, `${path}.destination`));
   if (!isPositiveNumber(l.rate)) errs.push(`${path}.rate: must be a positive number`);
   if (!isPositiveNumber(l.miles)) errs.push(`${path}.miles: must be a positive number`);
-  if (l.trailerType !== 'DRY' && l.trailerType !== 'REEFER') {
-    errs.push(`${path}.trailerType: must be 'DRY' or 'REEFER'`);
+  if (l.trailerType !== 'DRY_VAN' && l.trailerType !== 'REEFER' && l.trailerType !== 'FLATBED') {
+    errs.push(`${path}.trailerType: must be 'DRY_VAN', 'REEFER', or 'FLATBED'`);
   }
   return errs;
 }
@@ -120,8 +120,8 @@ export function validateRankLoadsBody(body: unknown): string | null {
     const d = b.driver as Record<string, unknown>;
     errs.push(...validateLocation(d.currentLocation, 'driver.currentLocation'));
     errs.push(...validateLocation(d.homeLocation, 'driver.homeLocation'));
-    if (d.trailerType !== 'DRY' && d.trailerType !== 'REEFER') {
-      errs.push("driver.trailerType: must be 'DRY' or 'REEFER'");
+    if (d.trailerType !== 'DRY_VAN' && d.trailerType !== 'REEFER' && d.trailerType !== 'FLATBED') {
+      errs.push("driver.trailerType: must be 'DRY_VAN', 'REEFER', or 'FLATBED'");
     }
   }
 

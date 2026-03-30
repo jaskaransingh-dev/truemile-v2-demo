@@ -13,7 +13,7 @@
 // Primitives
 // ---------------------------------------------------------------------------
 
-export type TrailerType = 'DRY' | 'REEFER';
+export type TrailerType = 'DRY_VAN' | 'REEFER' | 'FLATBED';
 
 export interface Coordinates {
   lat: number;

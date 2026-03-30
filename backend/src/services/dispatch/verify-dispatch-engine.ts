@@ -64,7 +64,7 @@ const DRIVER: Driver = {
   name: 'Test Driver',
   currentLocation: { city: 'Dallas', state: 'TX', lat: 32.7767, lon: -96.797 },
   homeLocation:    { city: 'Dallas', state: 'TX', lat: 32.7767, lon: -96.797 },
-  trailerType: 'DRY',
+  trailerType: 'DRY_VAN',
   avgDailyMiles: 650,
   cycleDays: 17,
   homeDays: 3,
@@ -95,7 +95,7 @@ const ACTIVE_LOAD: ActiveLoadExecution = {
   pickupDateTime:   '2026-03-11T08:00:00Z',
   deliveryDateTime: '2026-03-12T14:00:00Z',
   rate: 2200,
-  trailerType: 'DRY',
+  trailerType: 'DRY_VAN',
   rateConReference: 'COY-123456',
 };
 
@@ -120,7 +120,7 @@ const makeLoad = (
   miles,
   rate,
   brokerName: 'Test Broker',
-  trailerType: 'DRY',
+  trailerType: 'DRY_VAN',
   numberOfStops: 1,
   ...extras,
 });
@@ -150,7 +150,7 @@ const CONSTRAINT_CONFIG = {
   maxDeadheadMiles: 200,
   survivalRPMFloor: 1.62,
   homeTimeBufferDays: 0.5,
-  requiredTrailerType: 'DRY' as const,
+  requiredTrailerType: 'DRY_VAN' as const,
   enforceStatePreferences: true,
   minimumLoadRate: 500,
 };

@@ -1,0 +1,72 @@
+{
+  "driverId": "driver-001",
+  "cycleStartDate": "2026-03-23",
+  "now": "2026-03-23T10:45:00.000Z",
+  "driver": {
+    "currentLocation": { "city": "Dallas", "state": "TX" },
+    "homeLocation": { "city": "Dallas", "state": "TX" },
+    "trailerType": "REEFER",
+    "cycleDays": 14,
+    "homeDays": 2,
+    "maxDeadheadMiles": 250,
+    "minEffectiveRPM": 1.62,
+    "avgDailyMiles": 650
+  },
+  "candidateLoads": [
+    {
+      "externalId": "MANUAL-1",
+      "origin": { "city": "Dallas", "state": "TX" },
+      "destination": { "city": "Memphis", "state": "TN" },
+      "rate": 2000,
+      "miles": 688,
+      "trailerType": "REEFER",
+      "pickupWindowStart": "2026-03-23T07:00:00.000Z",
+      "pickupWindowEnd": "2026-03-23T12:00:00.000Z",
+      "deliveryDeadline": "2026-03-24T05:00:00.000Z"
+    },
+    {
+      "externalId": "MANUAL-2",
+      "origin": { "city": "Memphis", "state": "TN" },
+      "destination": { "city": "Denver", "state": "CO" },
+      "rate": 3200,
+      "miles": 1078,
+      "trailerType": "REEFER",
+      "pickupWindowStart": "2026-03-24T09:00:00.000Z",
+      "pickupWindowEnd": "2026-03-24T15:00:00.000Z",
+      "deliveryDeadline": "2026-03-26T07:00:00.000Z"
+    },
+    {
+      "externalId": "MANUAL-3",
+      "origin": { "city": "Denver", "state": "CO" },
+      "destination": { "city": "Miami", "state": "FL" },
+      "rate": 10000,
+      "miles": 2041,
+      "trailerType": "REEFER",
+      "pickupWindowStart": "2026-03-26T12:00:00.000Z",
+      "pickupWindowEnd": "2026-03-26T18:00:00.000Z",
+      "deliveryDeadline": "2026-03-30T05:00:00.000Z"
+    },
+    {
+      "externalId": "MANUAL-4",
+      "origin": { "city": "Miami", "state": "FL" },
+      "destination": { "city": "Kansas City", "state": "MO" },
+      "rate": 6000,
+      "miles": 1462,
+      "trailerType": "REEFER",
+      "pickupWindowStart": "2026-03-30T11:00:00.000Z",
+      "pickupWindowEnd": "2026-03-30T17:00:00.000Z",
+      "deliveryDeadline": "2026-04-02T05:00:00.000Z"
+    },
+    {
+      "externalId": "MANUAL-5",
+      "origin": { "city": "Kansas City", "state": "MO" },
+      "destination": { "city": "Dallas", "state": "TX" },
+      "rate": 8000,
+      "miles": 505,
+      "trailerType": "REEFER",
+      "pickupWindowStart": "2026-04-02T10:00:00.000Z",
+      "pickupWindowEnd": "2026-04-02T16:00:00.000Z",
+      "deliveryDeadline": "2026-04-03T07:00:00.000Z"
+    }
+  ]
+}

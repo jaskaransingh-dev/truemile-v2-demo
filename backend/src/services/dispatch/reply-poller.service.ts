@@ -55,7 +55,11 @@ function mapClassificationToStatus(
 }
 
 export class DispatchReplyPoller {
+  private static authFailed = false;
+
   static async pollBrokerReplies(): Promise<void> {
+    if (this.authFailed) return;
+
     const attempts = await prisma.outreachAttempt.findMany({
       where: {
         status: 'SENT',
@@ -69,7 +73,17 @@ export class DispatchReplyPoller {
       orderBy: { createdAt: 'asc' },
     });
 
-    const sender = (await GmailRuntimeService.getSenderEmail()).toLowerCase();
+    let sender: string;
+    try {
+      sender = (await GmailRuntimeService.getSenderEmail()).toLowerCase();
+    } catch (err: any) {
+      if (err?.response?.data?.error === 'invalid_grant' || err?.message?.includes('invalid_grant')) {
+        this.authFailed = true;
+        console.error('[DispatchReplyPoller] Gmail OAuth token invalid — re-generate GOOGLE_REFRESH_TOKEN. Polling suspended.');
+        return;
+      }
+      throw err;
+    }
 
     for (const attempt of attempts) {
       if (!attempt.gmailThreadId) continue;

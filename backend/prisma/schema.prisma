@@ -979,3 +979,23 @@ model DispatchDecision {
 
   selectedAt     DateTime    @default(now())
 }
+
+model MarketSnapshot {
+  id             Int      @id @default(autoincrement())
+  city           String
+  state          String   @db.Char(2)
+  equipment_type String   @db.VarChar(20)
+  outbound_mci   Int      @default(0)
+  inbound_mci    Int?
+  capacity_label String   @default("Neutral") @db.VarChar(30)
+  lt_ratio       Decimal? @db.Decimal(4, 2)
+  rejection_rate Decimal? @db.Decimal(5, 2)
+  data_source    String   @default("MANUAL") @db.VarChar(20)
+  valid_date     DateTime @db.Date
+  updated_at     DateTime @default(now())
+
+  @@unique([city, state, equipment_type, valid_date])
+  @@index([city, state, equipment_type, valid_date(sort: Desc)])
+  @@index([valid_date(sort: Desc)])
+  @@map("MarketSnapshot")
+}

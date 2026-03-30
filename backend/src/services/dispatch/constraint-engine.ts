@@ -48,7 +48,7 @@ export interface ConstraintConfig {
   /** Days of buffer added to transit when checking home time feasibility */
   homeTimeBufferDays: number;
   /** Required trailer type — load must match */
-  requiredTrailerType: 'DRY' | 'REEFER';
+  requiredTrailerType: 'DRY_VAN' | 'REEFER' | 'FLATBED';
   /** When true, load destination in driver.avoidStates is a hard reject */
   enforceStatePreferences: boolean;
   /** Absolute minimum total rate — rejects token loads. Omit to skip rate floor check. */
@@ -81,8 +81,9 @@ export interface ConstraintResult {
  * @param costModel     Pre-computed cost model (used for context, not re-checking RPM)
  * @param config        Constraint configuration
  * @param debug         When true, logs violations to console
- * @param activeLoad    Currently executing load (used for timing check)
- * @param nowMs         Current time ms (injectable for testing)
+ * @param activeLoad           Currently executing load (used for timing check)
+ * @param nowMs                Current time ms (injectable for testing)
+ * @param projectedDepartureMs Override reference time for home deadline (use for chained loads)
  */
 export function checkConstraints(
   load: Load,
@@ -94,6 +95,7 @@ export function checkConstraints(
   debug: boolean,
   activeLoad?: ActiveLoadExecution,
   nowMs: number = Date.now(),
+  projectedDepartureMs?: number,
 ): ConstraintResult {
   const violations: ConstraintViolation[] = [];
 
@@ -138,7 +140,8 @@ export function checkConstraints(
   }
 
   // 5. Home time deadline
-  const daysRemainingInCycle = (cycleState.homeDeadline.getTime() - nowMs) / MS_PER_DAY;
+  const referenceMs = projectedDepartureMs ?? nowMs;
+  const daysRemainingInCycle = (cycleState.homeDeadline.getTime() - referenceMs) / MS_PER_DAY;
   const daysToHome = estimateDaysToHome(load.destination.state, cycleState.homeLocation.state);
   const daysNeeded = metrics.transitDays + daysToHome + config.homeTimeBufferDays;
 
@@ -170,6 +173,7 @@ export function checkConstraints(
       load.pickupWindowStart,
       load.pickupWindowEnd,
       load.pickupDate,
+      nowMs,
     );
 
     const timingResult = activeLoad

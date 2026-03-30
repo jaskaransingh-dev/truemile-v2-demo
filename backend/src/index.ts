@@ -13,6 +13,7 @@ import expenseRoutes from './routes/expense.routes';
 import fleetFinancialsRoutes from './routes/fleet-financials';
 import rankLoadsRouter from './routes/dispatch.routes';
 import dispatchEngineRoutes from './routes/dispatch-engine.routes';
+import dispatchDevRouter from './routes/dispatch-dev.routes';
 import { authenticateToken } from './middleware/auth.middleware';
 import { tenantScope } from './middleware/tenant.middleware';
 // Rigby routes
@@ -29,21 +30,38 @@ const PORT = process.env.PORT || 3000;
 // ============ Middleware (PROPER ORDER!) ============
 app.use(helmet());
 
+// Dev-only: OPTIONS preflight for /api/dev/* must be intercepted before the
+// general CORS middleware (which hardcodes a single allowed origin).
+if (process.env.NODE_ENV !== 'production') {
+  app.options('/api/dev/*', (_req: Request, res: Response) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.sendStatus(200);
+  });
+}
+
 // CORS - MUST come before routes!
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
-    'http://localhost:5173',
-    'http://localhost:3000'
-  ],
+  origin: (origin, callback) => {
+    // Allow file:// (origin is null/undefined), any localhost, and the configured frontend URL
+    if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin === process.env.FRONTEND_URL) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], // ADD PATCH
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Extension-Key']
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Extension-Key'],
 }));
 
 // Additional CORS headers for compatibility
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:5173');
+  const origin = req.headers.origin;
+  if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin === process.env.FRONTEND_URL) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS'); // ADD PATCH
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Extension-Key');
   res.header('Access-Control-Allow-Credentials', 'true');
@@ -55,8 +73,8 @@ app.use((req, res, next) => {
 });
 
 // Body parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Request logging
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -99,6 +117,14 @@ app.use('/api/upload', uploadRoutes);
 // Dispatch routes
 app.use('/api/dispatch', authenticateToken, tenantScope, rankLoadsRouter);
 app.use('/api', dispatchEngineRoutes);
+
+// Dev-only unauthenticated dispatch route (CORS: *)
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/dev/dispatch', (_req: Request, res: Response, next: NextFunction) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    next();
+  }, dispatchDevRouter);
+}
 
 // ============ Error Handling ============
 app.use((req: Request, res: Response) => {

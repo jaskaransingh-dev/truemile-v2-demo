@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "seed:markets": "psql \"$DATABASE_URL\" -f scripts/market_conditions_seed.sql"
   },
   "dependencies": {
     "@azure/identity": "^4.0.0",

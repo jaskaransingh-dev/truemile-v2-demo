@@ -302,6 +302,7 @@ export function resolvePickupWindow(
   pickupWindowStart?: string,
   pickupWindowEnd?: string,
   pickupDate?: string,
+  nowMs: number = Date.now(),
 ): [Date, Date] {
   if (pickupWindowStart && pickupWindowEnd) {
     return [new Date(pickupWindowStart), new Date(pickupWindowEnd)];
@@ -320,6 +321,6 @@ export function resolvePickupWindow(
   }
 
   // No date — far-future window, passes feasibility. Data quality issue for UI to surface.
-  const fallback = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const fallback = new Date(nowMs + 30 * 24 * 60 * 60 * 1000);
   return [fallback, new Date(fallback.getTime() + 14 * 60 * 60 * 1000)];
 }

@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrueMile Dispatch Test Portal</title>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #081224;
+      color: #e8eefc;
+      min-height: 100vh;
+    }
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 64px;
+    }
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: end;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+    }
+    .hero p {
+      margin: 8px 0 0;
+      color: #9fb0d9;
+      font-size: 15px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #29406f;
+      background: rgba(45, 82, 165, 0.16);
+      color: #b8c8ef;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+    }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(13,24,49,0.96), rgba(9,18,37,0.96));
+      border: 1px solid #1e3460;
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.28);
+    }
+    .section-title {
+      margin: 0 0 14px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: #8ea6d7;
+      font-weight: 700;
+    }
+    .subtle {
+      color: #8fa3cf;
+      font-size: 13px;
+      margin-top: 6px;
+    }
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .field-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 760px) {
+      .field-grid, .field-grid.three { grid-template-columns: 1fr; }
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .field label {
+      font-size: 13px;
+      color: #b3c1e6;
+      font-weight: 600;
+    }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid #27437a;
+      background: #071538;
+      color: #eef4ff;
+      padding: 15px 16px;
+      font-size: 15px;
+      outline: none;
+    }
+    .field textarea {
+      min-height: 150px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      line-height: 1.35;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      border-color: #71a2ff;
+      box-shadow: 0 0 0 3px rgba(79,142,247,0.18);
+    }
+    .dropzone {
+      border: 1.5px dashed #305091;
+      border-radius: 20px;
+      padding: 18px;
+      text-align: center;
+      color: #9fb0d9;
+      background: rgba(12, 25, 54, 0.55);
+      cursor: pointer;
+      transition: 0.18s ease;
+    }
+    .dropzone:hover, .dropzone.over {
+      border-color: #71a2ff;
+      background: rgba(18, 34, 70, 0.72);
+    }
+    .dropzone input { display: none; }
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(83, 120, 195, 0.16);
+      border: 1px solid #2c467d;
+      color: #c7d5f7;
+      font-size: 13px;
+    }
+    .divider {
+      height: 1px;
+      background: rgba(88, 112, 168, 0.28);
+      margin: 22px 0;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    button {
+      border: 0;
+      border-radius: 18px;
+      padding: 15px 22px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .primary {
+      background: linear-gradient(180deg, #79a2ff, #4d79ef);
+      color: white;
+      box-shadow: 0 12px 28px rgba(63, 102, 210, 0.35);
+    }
+    .secondary {
+      background: rgba(255,255,255,0.05);
+      color: #e8eefc;
+      border: 1px solid #2a4274;
+    }
+    .danger {
+      background: rgba(239,68,68,0.12);
+      color: #fecaca;
+      border: 1px solid rgba(239,68,68,0.32);
+      padding: 16px 18px;
+      border-radius: 18px;
+      margin-top: 16px;
+      white-space: pre-wrap;
+    }
+    .info {
+      background: rgba(79,142,247,0.10);
+      color: #c7d7ff;
+      border: 1px solid rgba(79,142,247,0.28);
+      padding: 14px 16px;
+      border-radius: 18px;
+      margin-top: 12px;
+    }
+    .json {
+      margin-top: 16px;
+      border-radius: 18px;
+      border: 1px solid #243961;
+      background: #06122d;
+      padding: 14px;
+      display: none;
+      overflow: auto;
+      max-height: 420px;
+    }
+    pre {
+      margin: 0;
+      color: #d6e2ff;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      position: sticky;
+      top: 10px;
+      z-index: 4;
+    }
+    @media (max-width: 980px) {
+      .summary { position: static; }
+    }
+    .stat {
+      background: rgba(9,22,47,0.9);
+      border: 1px solid #223962;
+      border-radius: 20px;
+      padding: 16px;
+    }
+    .stat .label {
+      color: #95a9d8;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 8px;
+    }
+    .stat .value {
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .result-card {
+      border: 1px solid #28457c;
+      background: rgba(8,20,43,0.88);
+      border-radius: 22px;
+      padding: 18px;
+      margin-top: 14px;
+    }
+    .result-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .route-title {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 6px;
+    }
+    .meta-line {
+      color: #98abd8;
+      font-size: 14px;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+    @media (max-width: 760px) {
+      .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+    .mini {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid #21365e;
+      border-radius: 16px;
+      padding: 12px;
+    }
+    .mini .k { color: #8fa3cf; font-size: 12px; margin-bottom: 5px; }
+    .mini .v { font-size: 20px; font-weight: 800; }
+    details {
+      margin-top: 14px;
+      border-radius: 16px;
+      border: 1px solid #20365c;
+      background: rgba(255,255,255,0.025);
+      overflow: hidden;
+    }
+    summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 14px 16px;
+      font-weight: 700;
+      color: #dce7ff;
+    }
+    summary::-webkit-details-marker { display: none; }
+    .details-body {
+      padding: 0 16px 16px;
+      color: #b8c8ef;
+      font-size: 14px;
+    }
+    ul.clean {
+      margin: 0;
+      padding-left: 18px;
+    }
+    ul.clean li { margin: 7px 0; }
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid #233b67;
+      border-radius: 18px;
+      margin-top: 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 11px 12px;
+      border-bottom: 1px solid rgba(119, 145, 204, 0.16);
+      text-align: left;
+    }
+    th {
+      color: #9db1db;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      background: rgba(255,255,255,0.03);
+    }
+    .muted { color: #8fa3cf; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="hero">
+      <div>
+        <h1>Dispatch Test Portal</h1>
+        <p>Backend-mapped portal for <strong>/api/dev/dispatch/rank-loads</strong> and <strong>/api/dev/dispatch/rank-routes</strong>.</p>
+      </div>
+      <div class="badge">Real engine &middot; real request schema &middot; Excel import</div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h3 class="section-title">1. Engine Mode &amp; Endpoint</h3>
+          <div class="field-grid">
+            <div class="field">
+              <label>Mode</label>
+              <select id="modeSelect">
+                <option value="routes">Route sequencing</option>
+                <option value="loads">Candidate load ranking</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Backend base URL</label>
+              <input id="backendBaseUrl" value="http://localhost:3000/api/dev/dispatch" />
+            </div>
+          </div>
+          <div class="info" id="endpointInfo">Current endpoint: http://localhost:3000/api/dev/dispatch/rank-routes</div>
+
+          <div class="divider"></div>
+
+          <h3 class="section-title">2. Driver Constraints File</h3>
+          <div class="dropzone" id="constraintsDrop">
+            <input type="file" id="constraintsFile" accept=".xlsx,.xls" />
+            <strong>Upload test constraints.xlsx</strong>
+            <div class="subtle">Supports flexible key/value extraction from the first sheet.</div>
+          </div>
+          <div id="constraintsInfo" class="subtle"></div>
+
+          <div class="divider"></div>
+
+          <h3 class="section-title">3. Candidate Loads File</h3>
+          <div class="dropzone" id="loadsDrop">
+            <input type="file" id="loadsFile" accept=".xlsx,.xls" />
+            <strong>Upload sequenced_dummy_load_dataset.xlsx</strong>
+            <div class="subtle">Auto-detects common columns, with manual override below.</div>
+          </div>
+          <div id="loadsInfo" class="subtle"></div>
+
+          <div class="table-wrap" id="mappingWrap" style="display:none">
+            <table>
+              <thead>
+                <tr>
+                  <th>Schema field</th>
+                  <th>Mapped column</th>
+                  <th>Sample</th>
+                </tr>
+              </thead>
+              <tbody id="mappingBody"></tbody>
+            </table>
+          </div>
+
+          <div class="divider"></div>
+
+          <h3 class="section-title">4. Request Builder</h3>
+          <div class="field-grid">
+            <div class="field">
+              <label>Driver ID</label>
+              <input id="driverId" value="driver-001" />
+            </div>
+            <div class="field">
+              <label>Cycle start date</label>
+              <input id="cycleStartDate" type="date" value="2026-03-23" />
+            </div>
+            <div class="field">
+              <label>Current city</label>
+              <input id="currentCity" value="Dallas" />
+            </div>
+            <div class="field">
+              <label>Current state</label>
+              <input id="currentState" value="TX" />
+            </div>
+            <div class="field">
+              <label>Home city</label>
+              <input id="homeCity" value="Dallas" />
+            </div>
+            <div class="field">
+              <label>Home state</label>
+              <input id="homeState" value="TX" />
+            </div>
+            <div class="field">
+              <label>Trailer type</label>
+              <select id="trailerType">
+                <option value="REEFER">REEFER</option>
+                <option value="DRY">DRY</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Trailer compatibility rule</label>
+              <select id="compatMode">
+                <option value="strict">Strict exact match only</option>
+                <option value="allowFlex" selected>Allow &ldquo;Reefer or Van&rdquo; to inherit driver trailer</option>
+                <option value="excludeVanOnly">Exclude Van only for reefer driver</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Cycle days</label>
+              <input id="cycleDays" type="number" step="1" value="11" />
+            </div>
+            <div class="field">
+              <label>Home days</label>
+              <input id="homeDays" type="number" step="1" value="2" />
+            </div>
+            <div class="field">
+              <label>Max deadhead miles</label>
+              <input id="maxDeadheadMiles" type="number" step="1" value="250" />
+            </div>
+            <div class="field">
+              <label>Min effective RPM</label>
+              <input id="minEffectiveRPM" type="number" step="0.01" value="1.62" />
+            </div>
+            <div class="field">
+              <label>Avg daily miles</label>
+              <input id="avgDailyMiles" type="number" step="1" value="650" />
+            </div>
+            <div class="field">
+              <label>Survival margin %</label>
+              <input id="survivalMarginPercent" type="number" step="0.1" value="5" />
+            </div>
+            <div class="field">
+              <label>Preferred states (comma-separated)</label>
+              <input id="preferredStates" placeholder="TX, GA" />
+            </div>
+            <div class="field">
+              <label>Avoid states (comma-separated)</label>
+              <input id="avoidStates" value="NY, VA, PA, CA, ME" />
+            </div>
+            <div class="field">
+              <label>Optional now timestamp</label>
+              <input id="nowDateTime" type="datetime-local" />
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <h3 class="section-title">5. Manual CSV Load Input</h3>
+          <div class="field">
+            <label>Optional rows to append</label>
+            <textarea id="manualCsv" placeholder="PickUpDateTime,PickUpLocation,Deadhead,DropOffDateTime,DropOffLocation,Rate,Miles,RPM,Type"></textarea>
+            <div class="subtle">Useful for one-off curveballs without regenerating the workbook.</div>
+          </div>
+
+          <div class="actions">
+            <button class="primary" id="runBtn">Run real engine</button>
+            <button class="secondary" id="toggleJsonBtn">Show request JSON</button>
+          </div>
+          <div id="errorBox"></div>
+          <div class="json" id="jsonBox"><pre id="jsonPre"></pre></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="summary" id="summaryTop">
+          <div class="stat"><div class="label">Mode</div><div class="value" id="sumMode">&mdash;</div></div>
+          <div class="stat"><div class="label">Imported Loads</div><div class="value" id="sumImported">0</div></div>
+          <div class="stat"><div class="label">Manual Loads</div><div class="value" id="sumManual">0</div></div>
+        </div>
+
+        <div class="card" style="margin-top:18px">
+          <h3 class="section-title">Results</h3>
+          <div id="resultsIntro" class="subtle">Run the engine to render top recommendation, ranked outputs, and rejection reasons.</div>
+          <div id="resultsArea"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      constraintRows: [],
+      loadRows: [],
+      loadHeaders: [],
+      loadMapping: {},
+      importedLoadCount: 0,
+      manualLoadCount: 0,
+    };
+
+    const loadFieldOptions = [
+      { key: 'externalId', label: 'externalId', required: true },
+      { key: 'originCity', label: 'origin city', required: true },
+      { key: 'originState', label: 'origin state', required: true },
+      { key: 'destinationCity', label: 'destination city', required: true },
+      { key: 'destinationState', label: 'destination state', required: true },
+      { key: 'rate', label: 'rate', required: true },
+      { key: 'miles', label: 'miles', required: true },
+      { key: 'trailerType', label: 'trailer type', required: true },
+      { key: 'pickupDate', label: 'pickup date', required: false },
+      { key: 'pickupWindowStart', label: 'pickup window start', required: false },
+      { key: 'pickupWindowEnd', label: 'pickup window end', required: false },
+      { key: 'deliveryDate', label: 'delivery date', required: false },
+      { key: 'deadheadMiles', label: 'deadhead miles', required: false },
+      { key: 'brokerName', label: 'broker name', required: false },
+      { key: 'numberOfStops', label: 'number of stops', required: false },
+    ];
+
+    const aliases = {
+      externalId: ['externalid', 'load id', 'loadid', 'id', 'reference'],
+      originCity: ['pickup location', 'pick up location', 'pickup city', 'origin city', 'from city', 'pickuplocation', 'pick up loc'],
+      originState: ['pickup state', 'origin state', 'from state'],
+      destinationCity: ['drop off location', 'dropofflocation', 'destination city', 'delivery city', 'to city'],
+      destinationState: ['drop off state', 'destination state', 'delivery state', 'to state'],
+      rate: ['rate', 'revenue', 'gross rate'],
+      miles: ['miles', 'loaded miles'],
+      trailerType: ['type', 'trailer type', 'equipment'],
+      pickupDate: ['pick up date/time', 'pickup date', 'pickupdate', 'pickupdate/time'],
+      pickupWindowStart: ['pickup window start'],
+      pickupWindowEnd: ['pickup window end'],
+      deliveryDate: ['drop off date/time', 'delivery date', 'dropoffdate/time'],
+      deadheadMiles: ['deadhead', 'deadhead miles', 'deadheadmiles', 'dh miles', 'dh mi', 'dh', 'dh-o'],
+      brokerName: ['broker', 'broker name'],
+      numberOfStops: ['stops', 'number of stops'],
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function updateEndpointInfo() {
+      const base = $('backendBaseUrl').value.trim().replace(/\/$/, '');
+      const mode = $('modeSelect').value;
+      const path = mode === 'routes' ? '/rank-routes' : '/rank-loads';
+      $('endpointInfo').textContent = `Current endpoint: ${base}${path}`;
+      $('sumMode').textContent = mode === 'routes' ? 'Routes' : 'Loads';
+    }
+
+    function attachDropzone(wrapperId, inputId, handler) {
+      const wrapper = $(wrapperId);
+      const input = $(inputId);
+      wrapper.addEventListener('click', () => input.click());
+      input.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) handler(file);
+      });
+      wrapper.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        wrapper.classList.add('over');
+      });
+      wrapper.addEventListener('dragleave', () => wrapper.classList.remove('over'));
+      wrapper.addEventListener('drop', (e) => {
+        e.preventDefault();
+        wrapper.classList.remove('over');
+        const file = e.dataTransfer.files[0];
+        if (file) handler(file);
+      });
+    }
+
+    function readWorkbook(file, rawArrays) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            let rows;
+            if (rawArrays) {
+              rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false, dateNF: 'yyyy-mm-dd' });
+            } else {
+              rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false, dateNF: 'yyyy-mm-dd' });
+            }
+            resolve(rows);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function normalizeKey(v) {
+      return String(v || '').toLowerCase().trim().replace(/[_#]/g, '').replace(/\s+/g, ' ');
+    }
+
+    function parseConstraintRows(rows) {
+      const flat = {};
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !row.length) continue;
+        const firstCell = String(row[0] || '').trim();
+        if (!firstCell || firstCell.startsWith('#')) continue;
+        const nonEmpty = row.filter((v) => v !== '' && v != null);
+        const strCount = nonEmpty.filter((v) => typeof v === 'string' && isNaN(Number(v))).length;
+        if (strCount >= 2 && i + 1 < rows.length) {
+          const dataRow = rows[i + 1];
+          row.forEach((label, j) => {
+            const lbl = String(label || '').trim().toLowerCase();
+            if (!lbl || lbl.startsWith('#')) return;
+            const val = dataRow ? dataRow[j] : undefined;
+            if (val !== undefined && val !== null && val !== '') {
+              flat[lbl] = val;
+            }
+          });
+          i++;
+        }
+      }
+      return flat;
+    }
+
+    function firstValue(flat, keys) {
+      for (const key of keys) {
+        const nk = key.toLowerCase().trim();
+        if (flat[nk] !== undefined && flat[nk] !== '' && flat[nk] != null) return flat[nk];
+        const match = Object.keys(flat).find((k) => k.includes(nk) || nk.includes(k));
+        if (match && flat[match] !== '' && flat[match] != null) return flat[match];
+      }
+      return '';
+    }
+
+    function splitCityState(v) {
+      const s = String(v || '').trim();
+      if (!s) return { city: '', state: '' };
+      const parts = s.split(',').map((x) => x.trim()).filter(Boolean);
+      if (parts.length >= 2) return { city: parts[0], state: parts[1].toUpperCase() };
+      return { city: s, state: '' };
+    }
+
+    function fillConstraintForm(rows) {
+      const flat = parseConstraintRows(rows);
+
+      const homeRaw = firstValue(flat, ['driver home base', 'home base', 'driver home']);
+      const home = splitCityState(homeRaw);
+      if (home.city) {
+        $('currentCity').value = home.city;
+        $('homeCity').value = home.city;
+      }
+      if (home.state) {
+        $('currentState').value = home.state;
+        $('homeState').value = home.state;
+      }
+
+      const tt = normalizeTrailerType(firstValue(flat, ['trailer type']));
+      if (tt && ['DRY','REEFER'].includes(tt)) $('trailerType').value = tt;
+
+      const cdRaw = firstValue(flat, ['cycle days']);
+      if (cdRaw && !String(cdRaw).startsWith('=')) {
+        const cd = numeric(cdRaw, 0);
+        if (cd > 0) $('cycleDays').value = cd;
+      }
+
+      const avoidRaw = firstValue(flat, ['avoid states']);
+      if (avoidRaw) $('avoidStates').value = normalizeStateList(avoidRaw).join(', ');
+
+      const startDt = firstValue(flat, ['driver start date']);
+      if (startDt) {
+        const iso = toDateOnly(startDt);
+        if (iso) $('cycleStartDate').value = iso;
+      }
+
+      const parsed = [];
+      if (home.city) parsed.push(`Home: ${home.city}, ${home.state}`);
+      if (tt) parsed.push(`Trailer: ${tt}`);
+      if (avoidRaw) parsed.push(`Avoid: ${normalizeStateList(avoidRaw).join(', ')}`);
+      if (startDt) parsed.push(`Start: ${toDateOnly(startDt)}`);
+      $('constraintsInfo').textContent = `Imported: ${parsed.join(' \u00b7 ')}. Review and adjust fields before running.`;
+    }
+
+    function detectLoadMapping(headers) {
+      const mapping = {};
+      headers.forEach((header) => {
+        const nh = normalizeKey(header);
+        for (const field of loadFieldOptions) {
+          if (mapping[field.key]) continue;
+          if ((aliases[field.key] || []).some((a) => nh === normalizeKey(a) || nh.includes(normalizeKey(a)))) {
+            mapping[field.key] = header;
+          }
+        }
+      });
+      return mapping;
+    }
+
+    function renderMappingTable() {
+      const body = $('mappingBody');
+      body.innerHTML = '';
+      const options = [''].concat(state.loadHeaders);
+      const sampleRow = state.loadRows[0] || {};
+
+      loadFieldOptions.forEach((field) => {
+        const tr = document.createElement('tr');
+        const mapped = state.loadMapping[field.key] || '';
+        const sample = mapped ? sampleRow[mapped] : '';
+        tr.innerHTML = `
+          <td>${field.label}${field.required ? ' <span class="muted">(required)</span>' : ''}</td>
+          <td></td>
+          <td>${escapeHtml(String(sample || ''))}</td>
+        `;
+        const td = tr.children[1];
+        const select = document.createElement('select');
+        select.style.width = '100%';
+        select.style.borderRadius = '12px';
+        select.style.padding = '10px 12px';
+        select.style.background = '#071538';
+        select.style.color = '#eef4ff';
+        select.style.border = '1px solid #27437a';
+        options.forEach((opt) => {
+          const el = document.createElement('option');
+          el.value = opt;
+          el.textContent = opt || '(not mapped)';
+          if (opt === mapped) el.selected = true;
+          select.appendChild(el);
+        });
+        select.addEventListener('change', () => {
+          state.loadMapping[field.key] = select.value;
+          renderMappingTable();
+        });
+        td.appendChild(select);
+        body.appendChild(tr);
+      });
+
+      $('mappingWrap').style.display = state.loadRows.length ? 'block' : 'none';
+    }
+
+    function parseLocationString(v) {
+      const s = String(v || '').trim();
+      if (!s) return { city: '', state: '' };
+      const commaParts = s.split(',').map((x) => x.trim()).filter(Boolean);
+      if (commaParts.length >= 2) {
+        return { city: commaParts[0], state: commaParts[1].toUpperCase().slice(0, 2) };
+      }
+      const words = s.split(/\s+/);
+      const last = words[words.length - 1];
+      if (last && last.length === 2 && /^[A-Za-z]+$/.test(last)) {
+        return { city: words.slice(0, -1).join(' '), state: last.toUpperCase() };
+      }
+      return { city: s, state: '' };
+    }
+
+    function numeric(v, fallback = 0) {
+      const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+      return Number.isFinite(n) ? n : Number(fallback);
+    }
+
+    function toDateOnly(v) {
+      if (!v) return '';
+      const d = new Date(v);
+      if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+      return '';
+    }
+
+    function toIsoDateTime(v) {
+      if (!v) return '';
+      const d = new Date(v);
+      if (!Number.isNaN(d.getTime())) return d.toISOString();
+      const dateOnly = toDateOnly(v);
+      return dateOnly ? `${dateOnly}T08:00:00.000Z` : '';
+    }
+
+    function normalizeTrailerType(v) {
+      const raw = String(v || '').trim().toLowerCase();
+      if (!raw) return '';
+      if (raw.includes('reefer or van') || raw.includes('van or reefer')) return 'FLEX';
+      if (raw.includes('reefer') || raw === 'r') return 'REEFER';
+      if (raw.includes('van') || raw.includes('dry')) return 'DRY_VAN';
+      return raw.toUpperCase();
+    }
+
+    function normalizeStateList(v) {
+      return String(v || '')
+        .split(/[,;/]/)
+        .map((x) => x.trim().toUpperCase())
+        .filter(Boolean);
+    }
+
+    function escapeHtml(v) {
+      return String(v)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function buildCandidateLoads() {
+      const driverTrailer = $('trailerType').value;
+      const compatMode = $('compatMode').value;
+      const loads = [];
+      const skipped = [];
+
+      state.loadRows.forEach((row, idx) => {
+        const get = (key) => {
+          const col = state.loadMapping[key];
+          return col ? row[col] : '';
+        };
+
+        const ext = String(get('externalId') || `LOAD-${idx + 1}`).trim();
+        const originLoc = parseLocationString(get('originCity'));
+        const destinationLoc = parseLocationString(get('destinationCity'));
+        const originStateField = String(get('originState') || '').trim().toUpperCase();
+        const destinationStateField = String(get('destinationState') || '').trim().toUpperCase();
+        const origin = { city: originLoc.city, state: originStateField || originLoc.state };
+        const destination = { city: destinationLoc.city, state: destinationStateField || destinationLoc.state };
+        const rate = numeric(get('rate'));
+        const miles = numeric(get('miles'));
+        let trailerType = normalizeTrailerType(get('trailerType'));
+
+        if (trailerType === 'FLEX') {
+          trailerType = compatMode === 'strict' ? 'FLEX' : driverTrailer;
+        }
+        if (compatMode === 'excludeVanOnly' && driverTrailer === 'REEFER' && trailerType === 'DRY_VAN') {
+          skipped.push(`${ext}: excluded by compatibility rule`);
+          return;
+        }
+
+        if (!origin.city || !origin.state || !destination.city || !destination.state || !rate || !miles) {
+          skipped.push(`${ext}: missing origin/destination/rate/miles`);
+          return;
+        }
+        if (!['DRY_VAN', 'REEFER', 'FLATBED', 'FLEX'].includes(trailerType)) {
+          skipped.push(`${ext}: trailer type ${trailerType || '(empty)'} is not valid`);
+          return;
+        }
+
+        const deadheadMiles = numeric(get('deadheadMiles'));
+        const load = { externalId: ext, origin, destination, rate, miles, trailerType };
+        if (Number.isFinite(deadheadMiles) && deadheadMiles >= 0) load.deadheadMiles = deadheadMiles;
+
+        const pickupDate = toDateOnly(get('pickupDate'));
+        const pickupWindowStart = toIsoDateTime(get('pickupWindowStart') || get('pickupDate'));
+        const pickupWindowEnd = toIsoDateTime(get('pickupWindowEnd') || get('deliveryDate'));
+        const deliveryDate = toDateOnly(get('deliveryDate'));
+        const brokerName = String(get('brokerName') || '').trim();
+        const numberOfStops = parseInt(String(get('numberOfStops') || '1'), 10);
+
+        if (pickupDate) load.pickupDate = pickupDate;
+        if (pickupWindowStart) load.pickupWindowStart = pickupWindowStart;
+        if (pickupWindowEnd) load.pickupWindowEnd = pickupWindowEnd;
+        if (deliveryDate) load.deliveryDate = deliveryDate;
+        if (brokerName) load.brokerName = brokerName;
+        if (Number.isFinite(numberOfStops)) load.numberOfStops = numberOfStops;
+
+        loads.push(load);
+      });
+
+      return { loads, skipped };
+    }
+
+    function buildManualLoads() {
+      const text = $('manualCsv').value.trim();
+      if (!text) return [];
+      const lines = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+      if (lines.length <= 1) return [];
+      const rows = XLSX.utils.sheet_to_json(XLSX.utils.aoa_to_sheet(lines.map((line) => line.split(','))), { defval: '' });
+      return rows.map((row, i) => {
+        const origin = parseLocationString(row.PickUpLocation || row.pickuplocation || row.origin);
+        const destination = parseLocationString(row.DropOffLocation || row.dropofflocation || row.destination);
+        return {
+          externalId: `MANUAL-${i + 1}`,
+          origin: { city: origin.city, state: origin.state },
+          destination: { city: destination.city, state: destination.state },
+          rate: numeric(row.Rate),
+          miles: numeric(row.Miles),
+          trailerType: normalizeTrailerType(row.Type) === 'FLEX' ? $('trailerType').value : normalizeTrailerType(row.Type),
+          pickupDate: toDateOnly(row.PickUpDateTime),
+          pickupWindowStart: toIsoDateTime(row.PickUpDateTime),
+          deliveryDate: toDateOnly(row.DropOffDateTime),
+          brokerName: 'Manual',
+          numberOfStops: 1,
+        };
+      }).filter((x) => x.origin.city && x.destination.city && x.rate && x.miles && ['DRY_VAN', 'REEFER', 'FLATBED'].includes(x.trailerType));
+    }
+
+    function buildPayload() {
+      const errors = [];
+      const driverId = $('driverId').value.trim();
+      const cycleStartDate = $('cycleStartDate').value;
+      const currentCity = $('currentCity').value.trim();
+      const currentState = $('currentState').value.trim().toUpperCase();
+      const homeCity = $('homeCity').value.trim();
+      const homeState = $('homeState').value.trim().toUpperCase();
+      const trailerType = $('trailerType').value;
+
+      if (!driverId) errors.push('driverId is required');
+      if (!cycleStartDate) errors.push('cycleStartDate is required');
+      if (!currentCity || !currentState) errors.push('currentLocation city/state are required');
+      if (!homeCity || !homeState) errors.push('homeLocation city/state are required');
+
+      const imported = buildCandidateLoads();
+      const manual = buildManualLoads();
+      const candidateLoads = imported.loads.concat(manual);
+
+      state.importedLoadCount = imported.loads.length;
+      state.manualLoadCount = manual.length;
+      $('sumImported').textContent = String(state.importedLoadCount);
+      $('sumManual').textContent = String(state.manualLoadCount);
+
+      if (!candidateLoads.length) errors.push('candidateLoads is empty');
+
+      const payload = {
+        driverId,
+        cycleStartDate,
+        driver: {
+          currentLocation: { city: currentCity, state: currentState },
+          homeLocation: { city: homeCity, state: homeState },
+          trailerType,
+          cycleDays: numeric($('cycleDays').value, 11),
+          homeDays: numeric($('homeDays').value, 2),
+          maxDeadheadMiles: numeric($('maxDeadheadMiles').value, 250),
+          minEffectiveRPM: numeric($('minEffectiveRPM').value, 1.62),
+          avgDailyMiles: numeric($('avgDailyMiles').value, 650),
+          survivalMarginPercent: numeric($('survivalMarginPercent').value, 5),
+        },
+        candidateLoads,
+      };
+
+      const preferredStates = normalizeStateList($('preferredStates').value);
+      const avoidStates = normalizeStateList($('avoidStates').value);
+      if (preferredStates.length) payload.driver.preferredStates = preferredStates;
+      if (avoidStates.length) payload.driver.avoidStates = avoidStates;
+
+      const nowValue = $('nowDateTime').value;
+      if (nowValue) payload.now = new Date(nowValue).toISOString();
+
+      return { payload, errors, skipped: imported.skipped };
+    }
+
+    function currentEndpoint() {
+      const base = $('backendBaseUrl').value.trim().replace(/\/$/, '');
+      return `${base}/${$('modeSelect').value === 'routes' ? 'rank-routes' : 'rank-loads'}`;
+    }
+
+    async function runEngine() {
+      $('errorBox').innerHTML = '';
+      const { payload, errors, skipped } = buildPayload();
+      $('jsonPre').textContent = JSON.stringify(payload, null, 2);
+
+      if (skipped.length) {
+        $('errorBox').innerHTML = `<div class="info">Skipped ${skipped.length} load(s): ${escapeHtml(skipped.slice(0, 8).join(' | '))}${skipped.length > 8 ? ' ...' : ''}</div>`;
+      }
+      if (errors.length) {
+        $('errorBox').innerHTML += `<div class="danger">${escapeHtml(errors.join('\n'))}</div>`;
+        return;
+      }
+
+      $('runBtn').disabled = true;
+      $('runBtn').textContent = 'Running...';
+      try {
+        console.log('Fetching:', currentEndpoint(), JSON.stringify(payload).slice(0, 200));
+        const res = await fetch(currentEndpoint(), {
+          method: 'POST',
+          mode: 'cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          $('errorBox').innerHTML += `<div class="danger">HTTP ${res.status}: ${escapeHtml(JSON.stringify(data))}</div>`;
+          return;
+        }
+        renderResults(data);
+      } catch (err) {
+        $('errorBox').innerHTML += `<div class="danger">${escapeHtml(err.message || 'Failed to fetch')}</div>`;
+      } finally {
+        $('runBtn').disabled = false;
+        $('runBtn').textContent = 'Run real engine';
+      }
+    }
+
+    function metric(label, value) {
+      return `<div class="mini"><div class="k">${label}</div><div class="v">${value}</div></div>`;
+    }
+
+    // ─── Routes mode: render one ranked route card with steps table ───────────
+
+    function fmtDate(iso) {
+      if (!iso) return '&mdash;';
+      const d = new Date(iso);
+      return isNaN(d) ? escapeHtml(iso) : d.toLocaleDateString('en-US');
+    }
+
+    function renderRouteItem(route, idx) {
+      const steps = route.steps || [];
+
+      // Build full chain: all step origins + last step destination + → Home
+      let routeTitle;
+      if (steps.length === 0) {
+        routeTitle = route.externalId || 'Route';
+      } else {
+        const parts = steps.map(s => (s.lane || '').split('\u2192')[0].trim()).filter(Boolean);
+        const lastLaneDest = (steps[steps.length - 1].lane || '').split('\u2192')[1]?.trim();
+        if (lastLaneDest) parts.push(lastLaneDest);
+        routeTitle = parts.join(' \u2192 ') + ' \u2192 Home';
+      }
+
+      const profitColor = route.totalCycleProfit >= 0 ? '#10b981' : '#f87171';
+
+      const TH = (label) =>
+        `<th style="text-align:left;padding:8px 10px;border-bottom:1px solid #1e3460;color:#8ea6d7;font-size:10px;text-transform:uppercase;letter-spacing:.1em;background:rgba(255,255,255,0.03)">${label}</th>`;
+
+      let html = `<details ${idx === 0 ? 'open' : ''}>
+        <summary>
+          #${route.rank} &middot; ${escapeHtml(routeTitle)}
+          &nbsp;&nbsp;<span style="color:${profitColor};font-weight:800">$${Number(route.totalCycleProfit).toLocaleString()} cycle profit</span>
+        </summary>
+        <div class="details-body">
+          <div class="metric-grid">
+            ${metric('Cycle profit', '<span style="color:' + profitColor + '">$' + Number(route.totalCycleProfit).toLocaleString() + '</span>')}
+            ${metric('Revenue', '$' + Number(route.totalRevenue || 0).toLocaleString())}
+            ${metric('Avg RPM', '$' + Number(route.avgEffectiveRPM || 0).toFixed(2))}
+            ${metric('Slack days', route.slackDays != null ? route.slackDays : '&mdash;')}
+          </div>
+          <div class="metric-grid" style="margin-top:10px">
+            ${metric('Loaded mi', Number(route.totalLoadedMiles || 0).toLocaleString())}
+            ${metric('Deadhead mi', Number(route.totalDeadheadMiles || 0).toLocaleString())}
+            ${metric('Returns', fmtDate(route.estimatedReturnDate))}
+            ${metric('Confidence', route.confidence != null ? Math.round(route.confidence * 100) + '%' : '&mdash;')}
+          </div>`;
+
+      if (steps.length) {
+        html += `<div style="overflow:auto;margin-top:14px;border:1px solid #1e3460;border-radius:14px">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
+            <thead><tr>
+              ${TH('#')}${TH('Lane')}${TH('Rate')}${TH('Loaded Mi')}${TH('Deadhead Mi')}${TH('Step Profit')}${TH('Pickup')}${TH('Delivery')}
+            </tr></thead>
+            <tbody>`;
+        steps.forEach((step, si) => {
+          const isLast = si === steps.length - 1;
+          const border = isLast ? 'none' : '1px solid #0f1e3d';
+          html += `<tr>
+            <td style="padding:8px 10px;border-bottom:${border}">${si + 1}</td>
+            <td style="padding:8px 10px;border-bottom:${border}">${escapeHtml(step.lane || step.externalId || '')}${step.noCoords ? ' <span style="color:#f59e0b;font-size:10px">\u26a0 no coords</span>' : ''}</td>
+            <td style="padding:8px 10px;border-bottom:${border}">$${Number(step.rate || 0).toLocaleString()}</td>
+            <td style="padding:8px 10px;border-bottom:${border}">${Number(step.loadMiles || 0).toLocaleString()}</td>
+            <td style="padding:8px 10px;border-bottom:${border}">${Number(step.deadheadMiles || 0).toLocaleString()}</td>
+            <td style="padding:8px 10px;border-bottom:${border};color:#10b981">$${Number(step.stepProfit || 0).toLocaleString()}</td>
+            <td style="padding:8px 10px;border-bottom:${border};font-size:11px">${fmtDate(step.pickupAt)}</td>
+            <td style="padding:8px 10px;border-bottom:${border};font-size:11px">${fmtDate(step.deliveryAt)}</td>
+          </tr>`;
+        });
+        html += `</tbody></table></div>`;
+      }
+
+      if (route.warnings && route.warnings.length) {
+        html += `<div style="margin-top:10px;padding:10px 12px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;font-size:12px;color:#fcd34d">`;
+        route.warnings.forEach(w => { html += `\u26a0 ${escapeHtml(w)}<br>`; });
+        html += `</div>`;
+      }
+
+      html += `<ul class="clean" style="margin-top:14px">${(route.reasons || []).map(r => `<li>${escapeHtml(r)}</li>`).join('') || '<li>No reasons returned.</li>'}</ul>`;
+      html += `</div></details>`;
+      return html;
+    }
+
+    // ─── Loads mode: render one ranked load card ──────────────────────────────
+
+    function renderLoadItem(item, idx) {
+      const isV2 = item.destinationMCI != null || item.marketStrength != null;
+      const laneLabel = item.lane || (item.origin && item.destination
+        ? `${item.origin.city}, ${item.origin.state} → ${item.destination.city}, ${item.destination.state}`
+        : item.externalId || item.id || 'Result');
+      const urgentBadge = item.urgentCall ? ' <span style="color:#d63031;font-weight:700">⚡ URGENT</span>' : '';
+
+      let bodyHtml;
+      if (isV2) {
+        const fmtDt = (iso) => iso ? new Date(iso).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '&mdash;';
+        bodyHtml = `
+          <div class="metric-grid">
+            ${metric('Score', item.score != null ? Number(item.score).toFixed(3) : '&mdash;')}
+            ${metric('Eff. RPM', item.effectiveRPM != null ? '$' + Number(item.effectiveRPM).toFixed(2) : '&mdash;')}
+            ${metric('Deadhead mi', item.deadheadMiles != null ? Number(item.deadheadMiles).toLocaleString() : '&mdash;')}
+            ${metric('Revenue gate', item.revenueScore === 1 ? '✓ Pass' : '✗ Fail')}
+          </div>
+          <div class="metric-grid" style="margin-top:8px">
+            ${metric('MCI', item.destinationMCI != null ? String(item.destinationMCI) : '&mdash;')}
+            ${metric('Capacity', item.capacityLabel || '&mdash;')}
+            ${metric('Dest. score', item.destinationScore != null ? Number(item.destinationScore).toFixed(3) : '&mdash;')}
+            ${metric('Cycle fit', item.cycleFitScore != null ? Number(item.cycleFitScore).toFixed(3) : '&mdash;')}
+          </div>
+          <div class="metric-grid" style="margin-top:8px">
+            ${metric('RPM score', item.rpmScore != null ? Number(item.rpmScore).toFixed(3) : '&mdash;')}
+            ${metric('Delivery score', item.deliveryScore != null ? Number(item.deliveryScore).toFixed(3) : '&mdash;')}
+            ${metric('Pickup', fmtDt(item.pickupWindowStart))}
+            ${metric('Drop-off', fmtDt(item.deliveryDeadline))}
+          </div>`;
+      } else {
+        bodyHtml = `
+          <div class="metric-grid">
+            ${metric('Score', item.score != null ? Number(item.score).toLocaleString() : '&mdash;')}
+            ${metric('Confidence', item.confidence != null ? Math.round(Number(item.confidence) * 100) + '%' : '&mdash;')}
+            ${metric('Eff. RPM', item.effectiveRPM != null ? '$' + Number(item.effectiveRPM).toFixed(2) : '&mdash;')}
+            ${metric('Tie breaker', item.tieBreaker != null ? Number(item.tieBreaker).toLocaleString() : '&mdash;')}
+          </div>
+          <ul class="clean" style="margin-top:14px">${(item.reasons || []).map(r => `<li>${escapeHtml(r)}</li>`).join('') || '<li>No reasons returned.</li>'}</ul>`;
+      }
+
+      return `<details ${idx === 0 ? 'open' : ''}>
+        <summary>#${escapeHtml(String(item.rank ?? idx + 1))} &middot; ${escapeHtml(laneLabel)}${urgentBadge}</summary>
+        <div class="details-body">${bodyHtml}</div>
+      </details>`;
+    }
+
+    // ─── Main render dispatcher ───────────────────────────────────────────────
+
+    function renderResults(data) {
+      const area = $('resultsArea');
+      const summary = data.summary || {};
+      const isRoutesMode = Array.isArray(data.rankedRoutes);
+      const top = data.topRecommendation || null;
+      const ranked = data.rankedRoutes || data.rankedLoads || [];
+      const rejected = data.rejectedLoads || data.firstLegRejections || [];
+      const modeLabel = data.engineMode || (isRoutesMode ? 'ROUTE_SEQUENCER' : 'LOAD_RANKING');
+
+      let html = '';
+      html += `<div class="info">Engine mode: <strong>${escapeHtml(modeLabel)}</strong></div>`;
+
+      // Summary metrics
+      if (isRoutesMode) {
+        html += `<div class="metric-grid" style="margin-top:12px">
+          ${metric('Routes evaluated', summary.totalRoutesEvaluated ?? 0)}
+          ${metric('Viable routes', summary.viableRoutes ?? 0)}
+          ${metric('Best cycle profit', summary.bestCycleProfit != null ? '$' + Number(summary.bestCycleProfit).toLocaleString() : '&mdash;')}
+          ${metric('Avg cycle profit', summary.avgCycleProfit != null ? '$' + Number(summary.avgCycleProfit).toLocaleString() : '&mdash;')}
+        </div>`;
+      } else {
+        html += `<div class="metric-grid" style="margin-top:12px">
+          ${metric('Loads received', summary.loadsReceived ?? ranked.length + rejected.length)}
+          ${metric('Analyzed', summary.loadsAnalyzed ?? ranked.length)}
+          ${metric('Rejected', summary.rejectedCount ?? rejected.length)}
+          ${metric('Avg cycle profit', summary.avgCycleProfit != null ? '$' + Number(summary.avgCycleProfit).toLocaleString() : '&mdash;')}
+        </div>`;
+      }
+
+      // Top recommendation (loads mode only)
+      if (top) {
+        html += `<div class="result-card">
+          <div class="result-head">
+            <div>
+              <div class="route-title">Top recommendation</div>
+              <div class="meta-line">${escapeHtml(top.lane || top.externalId || 'Top result')}</div>
+            </div>
+            <div class="pill">Rank #${escapeHtml(String(top.rank ?? 1))}</div>
+          </div>
+          <div class="metric-grid">
+            ${metric('Rate', top.rate != null ? '$' + Number(top.rate).toLocaleString() : '&mdash;')}
+            ${metric('Load miles', top.loadMiles != null ? Number(top.loadMiles).toLocaleString() : '&mdash;')}
+            ${metric('Deadhead', top.deadheadMiles != null ? Number(top.deadheadMiles).toLocaleString() : '&mdash;')}
+            ${metric('Effective RPM', top.effectiveRPM != null ? '$' + Number(top.effectiveRPM).toFixed(2) : '&mdash;')}
+          </div>
+          <details open>
+            <summary>Reasons</summary>
+            <div class="details-body">
+              <ul class="clean">${(top.reasons || []).map(r => `<li>${escapeHtml(r)}</li>`).join('') || '<li>No reasons returned.</li>'}</ul>
+            </div>
+          </details>
+        </div>`;
+      }
+
+      // Ranked results
+      html += `<div class="result-card">
+        <div class="route-title" style="font-size:18px">${isRoutesMode ? 'Ranked routes' : 'Ranked candidate loads'}</div>
+        ${ranked.length
+          ? ranked.map((item, idx) => isRoutesMode ? renderRouteItem(item, idx) : renderLoadItem(item, idx)).join('')
+          : '<div class="subtle" style="margin-top:12px">No ranked outputs returned.</div>'}
+      </div>`;
+
+      // Rejections
+      const rejTitle = isRoutesMode ? 'First-leg rejections' : 'Rejected loads';
+      html += `<div class="result-card">
+        <div class="route-title" style="font-size:18px">${rejTitle}</div>
+        ${rejected.length
+          ? rejected.map((item, idx) => {
+              // Prefer full lane string; fall back to lane label or ID.
+              const rejLane = (item.origin && item.destination)
+                ? `${item.origin.city}, ${item.origin.state} → ${item.destination.city}, ${item.destination.state}`
+                : (item.lane || item.externalId || item.id || 'Rejected');
+              const codeTag = item.violationCode
+                ? ` <span style="font-size:11px;font-weight:400;opacity:0.65;margin-left:8px">[${escapeHtml(item.violationCode)}]</span>`
+                : '';
+              let rejBody;
+              if (isRoutesMode) {
+                rejBody = `<p style="margin:0">${escapeHtml(item.reason || '')}</p>`;
+              } else if (item.violationCode) {
+                // v2 format: flat violationCode + violationMessage
+                rejBody = `<ul class="clean"><li><strong>${escapeHtml(item.violationCode)}</strong> &mdash; ${escapeHtml(item.violationMessage || '')}</li></ul>`;
+              } else {
+                // v1 format: violations array
+                rejBody = `<ul class="clean">${(item.violations || []).map(v => `<li><strong>${escapeHtml(v.code || 'VIOLATION')}</strong> &mdash; ${escapeHtml(v.message || '')}</li>`).join('') || '<li>No violation details returned.</li>'}</ul>`;
+              }
+              return `<details ${idx === 0 ? 'open' : ''}>
+                <summary>${escapeHtml(rejLane)}${codeTag}</summary>
+                <div class="details-body">${rejBody}</div>
+              </details>`;
+            }).join('')
+          : '<div class="subtle" style="margin-top:12px">No rejections.</div>'}
+      </div>`;
+
+      area.innerHTML = html;
+    }
+
+    async function importConstraints(file) {
+      const rows = await readWorkbook(file, true);
+      state.constraintRows = rows;
+      fillConstraintForm(rows);
+    }
+
+    async function importLoads(file) {
+      const rows = await readWorkbook(file);
+      state.loadRows = rows;
+      state.loadHeaders = Object.keys(rows[0] || {});
+      state.loadMapping = detectLoadMapping(state.loadHeaders);
+      $('loadsInfo').textContent = `Imported ${rows.length} load row(s). Review column mapping below.`;
+      renderMappingTable();
+    }
+
+    $('modeSelect').addEventListener('change', updateEndpointInfo);
+    $('backendBaseUrl').addEventListener('input', updateEndpointInfo);
+    $('runBtn').addEventListener('click', runEngine);
+    $('toggleJsonBtn').addEventListener('click', () => {
+      const box = $('jsonBox');
+      box.style.display = box.style.display === 'block' ? 'none' : 'block';
+    });
+
+    attachDropzone('constraintsDrop', 'constraintsFile', importConstraints);
+    attachDropzone('loadsDrop', 'loadsFile', importLoads);
+    updateEndpointInfo();
+  </script>
+</body>
+</html>
