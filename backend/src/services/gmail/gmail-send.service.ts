@@ -1,9 +1,7 @@
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db';
 import { decryptToken } from '../../utils/encryption';
-
-const prisma = new PrismaClient();
 
 interface SendEmailParams {
   to: string;

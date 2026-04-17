@@ -1,8 +1,7 @@
 import express, { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // For MVP demo, using hardcoded userId
 // In production, get this from auth session

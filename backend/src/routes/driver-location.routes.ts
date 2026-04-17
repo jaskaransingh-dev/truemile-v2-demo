@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // PUT /api/drivers/location — receive location ping from driver mobile app
 router.put('/location', async (req: Request, res: Response) => {

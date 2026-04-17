@@ -1,9 +1,7 @@
 // load-extractor.service.ts
 // Enhanced load extractor with priority scoring and broker intelligence
 
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../db';
 
 const US_STATES = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',

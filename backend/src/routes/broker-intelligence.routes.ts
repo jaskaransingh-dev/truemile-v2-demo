@@ -1,10 +1,9 @@
 // src/routes/broker-intelligence.routes.ts
 
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /api/broker-intelligence/stats - Overall dashboard stats
 router.get('/stats', async (req, res) => {

@@ -5,10 +5,9 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import Anthropic from '@anthropic-ai/sdk';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const upload = multer({

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { createClient } from '@supabase/supabase-js';
 import multer from 'multer';
 import fs from 'fs';
@@ -103,7 +103,6 @@ async function sendEmailWithAttachment(params: {
 }
 
 const router = Router();
-const prisma = new PrismaClient();
 
 const DOC_DIR = path.join('/tmp', 'driver-docs');
 if (!fs.existsSync(DOC_DIR)) fs.mkdirSync(DOC_DIR, { recursive: true });

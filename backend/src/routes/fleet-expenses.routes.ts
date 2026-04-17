@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { requireSupabaseAuth } from '../middleware/supabase-auth.middleware';
 import multer from 'multer';
 import { categorizeExpense } from '../services/categorization-rules';
@@ -7,7 +7,6 @@ import { parse as csvParse } from 'csv-parse/sync';
 import XLSX from 'xlsx';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Multer for expense file uploads (CSV, XLSX, PDF, images)
 const upload = multer({ dest: '/tmp/expense-uploads/', limits: { fileSize: 20 * 1024 * 1024 } });

@@ -4,7 +4,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
@@ -18,7 +18,6 @@ const execAsync = promisify(exec);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const router = Router();
-const prisma = new PrismaClient();
 
 const DOC_DIR = path.join('/tmp', 'dispatch-docs');
 if (!fs.existsSync(DOC_DIR)) fs.mkdirSync(DOC_DIR, { recursive: true });

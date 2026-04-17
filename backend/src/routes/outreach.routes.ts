@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import brokerOutreachService from '../services/ai/broker-outreach.service';
 import GmailSendService from '../services/gmail/gmail-send.service';
-import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 
