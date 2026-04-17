@@ -75,6 +75,7 @@ export interface RankLoadsRequest {
     homeDays?: number;
     maxDeadheadMiles?: number;
     minEffectiveRPM?: number;
+    targetRPM?: number;
     survivalMarginPercent?: number;
     preferredStates?: string[];
     avoidStates?: string[];

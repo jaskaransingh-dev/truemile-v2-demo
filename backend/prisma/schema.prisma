@@ -216,6 +216,8 @@ model Carrier {
   datBatches          DATIngestBatch[]
   datSnapshots        DATLoadSnapshot[]
   loadRecommendations LoadRecommendation[]
+  expenseCategories   ExpenseCategory[]
+  fleetSettings       FleetSettings[]
 }
 
 model Fleet {
@@ -296,6 +298,11 @@ model Driver {
   fleetId           String
   carrierId         String?
   name              String
+  phoneNumber       String?
+  truckNumber       String?
+  trailerNumber     String?
+  homeBase          String?
+  targetRPM         Float     @default(1.86)
   trailerType       TrailerType?
   payStructure      String
   payRate           Float
@@ -314,9 +321,14 @@ model Driver {
   fleet             Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
   carrier           Carrier?  @relation(fields: [carrierId], references: [id])
   recommendations   LoadRecommendation[]
+  operationalState  DriverOperationalState?
+  cycles            DriverCycle[]
+  dispatchLoads     DispatchLoad[]
+  fleetExpenses     FleetExpense[]
 
   @@index([fleetId])
   @@index([carrierId])
+  @@index([phoneNumber])
 }
 
 model Expense {
@@ -998,4 +1010,154 @@ model MarketSnapshot {
   @@index([city, state, equipment_type, valid_date(sort: Desc)])
   @@index([valid_date(sort: Desc)])
   @@map("MarketSnapshot")
+}
+
+model DriverOperationalState {
+  id                       String    @id @default(cuid())
+  driverId                 String    @unique
+  currentLat               Float?
+  currentLon               Float?
+  currentLocation          String?
+  currentLocationTimestamp  DateTime?
+  status                   String    @default("ACTIVE")
+  updatedAt                DateTime  @updatedAt
+  driver                   Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+}
+
+model ChatMessage {
+  id          String   @id @default(uuid())
+  driverPhone String
+  senderType  String   // 'DRIVER' | 'DISPATCHER'
+  senderName  String
+  text        String
+  createdAt   DateTime @default(now())
+  read        Boolean  @default(false)
+
+  @@index([driverPhone, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher-managed driver cycles (out/home rotation tracking)
+// ---------------------------------------------------------------------------
+model DriverCycle {
+  id         String   @id @default(cuid())
+  driverId   String
+  startDate  DateTime
+  endDate    DateTime
+  status     String   @default("ACTIVE") // ACTIVE | COMPLETED
+  createdAt  DateTime @default(now())
+  driver     Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, status])
+  @@index([driverId, startDate])
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher-managed loads (distinct from the email-parsed Load model)
+// Populated from rate con uploads and linked to a driver
+// ---------------------------------------------------------------------------
+model DispatchLoad {
+  id               String   @id @default(cuid())
+  driverId         String
+  loadNumber       String?
+  status           String   @default("BOOKED") // BOOKED | IN_TRANSIT | DELIVERED | CANCELLED
+
+  // Pickup
+  pickupCity       String?
+  pickupState      String?
+  pickupLat        Float?
+  pickupLon        Float?
+  pickupTime       DateTime?
+
+  // Delivery
+  dropoffCity      String?
+  dropoffState     String?
+  dropoffLat       Float?
+  dropoffLon       Float?
+  deliveryTime     DateTime?
+
+  // Financials
+  rate             Float?
+  loadedMiles      Float?
+  loadedMilesSource String?  // 'RATECON' | 'CALCULATED'
+  deadheadMiles    Float?
+  deadheadMilesSource String? // 'RATECON' | 'CALCULATED'
+
+  // Multi-stop
+  stopCount        Int?
+  stops            Json?    // [{ type, city, state, address, appointment, sequence }]
+
+  // Broker
+  brokerName       String?
+  brokerAgentName  String?
+  brokerEmail      String?
+  brokerPhone      String?
+  brokerMC         String?
+
+  // Documents (paths on disk / URLs)
+  rateConPath      String?
+  rateConUploadedAt DateTime?
+  bolPath          String?
+  bolUploadedAt    DateTime?
+  podPath          String?
+  podUploadedAt    DateTime?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  driver           Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, pickupTime])
+  @@index([driverId, createdAt])
+  @@index([loadNumber])
+}
+
+// ---------------------------------------------------------------------------
+// Expense categories — configurable per carrier
+// ---------------------------------------------------------------------------
+model ExpenseCategory {
+  id            String   @id @default(cuid())
+  carrierId     String
+  name          String
+  type          String   // FIXED | VARIABLE | DRIVER_PAY
+  scope         String   // FLEET | PER_DRIVER
+  defaultAmount Float?
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  carrier       Carrier  @relation(fields: [carrierId], references: [id])
+  expenses      FleetExpense[]
+
+  @@index([carrierId, type])
+}
+
+// ---------------------------------------------------------------------------
+// Fleet expenses — actual expense records per month
+// ---------------------------------------------------------------------------
+model FleetExpense {
+  id         String   @id @default(cuid())
+  categoryId String
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  driverId   String?
+  driver     Driver?  @relation(fields: [driverId], references: [id])
+  month      String   // "2026-03"
+  amount     Float
+  notes      String?
+  source     String   @default("MANUAL") // MANUAL | CC_UPLOAD | FUEL_UPLOAD
+  createdAt  DateTime @default(now())
+
+  @@index([categoryId])
+  @@index([driverId, month])
+  @@index([month])
+}
+
+// ---------------------------------------------------------------------------
+// Fleet settings — factoring rate, etc.
+// ---------------------------------------------------------------------------
+model FleetSettings {
+  id            String   @id @default(cuid())
+  carrierId     String   @unique
+  factoringRate Float    @default(0.022)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  carrier       Carrier  @relation(fields: [carrierId], references: [id])
 }

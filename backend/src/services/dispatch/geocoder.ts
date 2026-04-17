@@ -27,14 +27,22 @@ const CACHE_FILE = path.join(__dirname, '../../../data/geocode-cache.json');
 
 const cache = new Map<string, Coords | null>();
 
-// Load persisted cache on startup
+// Load persisted cache on startup — skip null entries (legacy transient-failure poison)
 try {
   if (fs.existsSync(CACHE_FILE)) {
     const saved = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')) as Record<string, Coords | null>;
+    let loaded = 0;
+    let purged = 0;
     for (const [k, v] of Object.entries(saved)) {
-      cache.set(k, v);
+      if (v != null) {
+        cache.set(k, v);
+        loaded++;
+      } else {
+        purged++;
+      }
     }
-    console.log(`[geocoder] Loaded ${cache.size} entries from disk cache`);
+    console.log(`[geocoder] Loaded ${loaded} entries from disk cache, purged ${purged} stale null entries`);
+    if (purged > 0) persistCache();
   }
 } catch {
   console.warn('[geocoder] Could not load cache file — starting with empty cache');
@@ -86,6 +94,7 @@ export async function geocodeCity(city: string, state: string): Promise<Coords |
       return result;
     }
 
+    // API responded successfully but found no results — city genuinely not found. Cache the miss.
     cache.set(key, null);
     persistCache();
     return null;
@@ -93,8 +102,7 @@ export async function geocodeCity(city: string, state: string): Promise<Coords |
     clearTimeout(timeout);
     const timedOut = err instanceof Error && err.name === 'AbortError';
     console.warn(`[geocoder] ${timedOut ? 'Timeout' : 'Error'} geocoding ${city}, ${state}`);
-    cache.set(key, null);
-    persistCache();
+    // Do NOT cache transient failures — next request should retry
     return null;
   }
 }

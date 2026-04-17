@@ -23,13 +23,14 @@
 
 import { prisma } from '../db';
 import { calculateDeadheadMiles } from './load-metrics';
+import { geocodeCity } from './geocoder';
 import type { Location } from '../../types/constraint.types';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_RESULTS              = 10;
+const MAX_RESULTS              = 20;
 const URGENT_CALL_COUNT        = 2;
 /** Continental US diagonal (Los Angeles → New York) — denominator for homewardBias */
 const MAX_POSSIBLE_DISTANCE_MI = 2_500;
@@ -38,6 +39,17 @@ const MS_PER_DAY               = 86_400_000;
 const DAILY_MILES_BUFFER       = 1.15;
 /** Max miles from destination to nearest MarketSnapshot city before proxy falls back to default. */
 const MAX_PROXY_DISTANCE_MI    = 300;
+
+/** Normalize raw trailer type strings to canonical engine values. */
+export function normalizeTrailerType(raw: string): 'DRY_VAN' | 'REEFER' | 'FLATBED' | 'FLEX' {
+  const s = raw.toUpperCase().replace(/[\s_-]/g, '');
+  if (['VAN', 'DRYVAN', 'V'].includes(s)) return 'DRY_VAN';
+  if (['REEFER', 'R', 'REFRIGERATED'].includes(s)) return 'REEFER';
+  if (['FLATBED', 'FLAT', 'F'].includes(s)) return 'FLATBED';
+  if (['FLEX', 'VR', 'VANORREEFER'].includes(s)) return 'FLEX';
+  console.log(`[trailerType] unrecognized value "${raw}" — defaulting to DRY_VAN`);
+  return 'DRY_VAN';
+}
 
 // ---------------------------------------------------------------------------
 // Nearest-city coordinate lookup
@@ -180,19 +192,25 @@ export interface RankedLoad extends CandidateLoad {
   mciProxyState:         string | null;
   /** Distance in miles from destination to proxy city. Null when exact match found. */
   mciProxyDistanceMiles: number | null;
+  /** MCI-based score multiplier: 1.10 (Very Tight) to 0.80 (Very Loose). Applied to baseScore. */
+  mciMultiplier:         number;
   effectiveRPM:          number;
+  /** RPM score: min(effectiveRPM / targetRPM, 2.0) / 2.0. Weight: 0.40. */
+  rpmScore:          number;
   revenueScore:      number;
   destinationScore:  number;
   cycleFitScore:     number;
   dailyRevenueScore: number;
-  /** Load gross rate divided by estimated transit days. For display only. */
+  /** Load gross rate divided by estimated transit days. */
   revenuePerDay:     number;
+  /** Estimated transit days via step function: <600mi=1d, 600–1269=2d, etc. */
+  estimatedDays:     number;
   deliveryScore:          number;
-  /** False when both deliveryDate and deliveryDeadline were absent/empty — 0.10 weight redistributed to other dimensions. */
+  /** False when both deliveryDate and deliveryDeadline were absent/empty. */
   deliveryScoreAvailable: boolean;
   /** True when deliveryDate was absent on input and was inferred from pickupDate + buffered transit. */
   inferredDelivery:  boolean;
-  /** Normalized net profit score 0–1. Relative to best load in set: netProfit / maxNetProfit. Best load = 1.0, others scale proportionally. */
+  /** Normalized net profit score 0–1. Relative to best load in set. For display only — not in score. */
   netProfitScore:    number;
   /** Estimated net profit in dollars: rate − (totalMiles × variableCPM) − (rate × factoringRate) */
   netProfit:         number;
@@ -310,6 +328,15 @@ function computeDeliveryScore(load: CandidateLoad): number {
   return Math.min(1, Math.max(0, score));
 }
 
+/** Range-based MCI multiplier applied to baseScore after Pass 2 normalization. */
+function mciMultiplier(mci: number): number {
+  if (mci >= 50)  return 1.10;  // Very Tight — hot market
+  if (mci >= 10)  return 1.05;  // Tight — good market
+  if (mci >= -10) return 1.00;  // Neutral — no adjustment
+  if (mci >= -50) return 0.90;  // Loose — risk of sitting
+  return 0.80;                   // Very Loose — likely deadtime
+}
+
 // ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
@@ -320,6 +347,14 @@ export async function rankLoads(
   cycleState: CycleState,
   now:        Date,
 ): Promise<{ rankedLoads: RankedLoad[]; rejectedLoads: RejectedLoad[] }> {
+  // Normalize trailer types up front — before any comparison, rejection, or DB query
+  const rawDriverTrailer = driver.trailerType;
+  driver.trailerType = normalizeTrailerType(driver.trailerType);
+  console.log(`[MCI-query] equipment_type after normalization: ${driver.trailerType} (raw: "${rawDriverTrailer}")`);
+  for (const load of loads) {
+    load.trailerType = normalizeTrailerType(load.trailerType);
+  }
+
   const dwellDays = driver.dwellDays ?? 0.5;
 
   // ---------------------------------------------------------------------------
@@ -337,16 +372,19 @@ export async function rankLoads(
     }
   }
 
-  // Pass A: exact matches in sequential batches of 5 to avoid exhausting the connection pool.
+  // Pass A: exact matches in sequential batches of 2 with 50ms delay between batches
+  // to avoid exhausting Supabase connection pool (MaxClientsInSessionMode).
   const marketCache = new Map<string, MarketSnapshotResult>();
   const keys = [...destInfos.keys()];
   const exactResults: { key: string; row: { outbound_mci: number; capacity_label: string } | null }[] = [];
-  const MCI_BATCH_SIZE = 5;
+  const MCI_BATCH_SIZE = 2;
   for (let i = 0; i < keys.length; i += MCI_BATCH_SIZE) {
+    if (i > 0) await new Promise(r => setTimeout(r, 50));
     const batch = keys.slice(i, i + MCI_BATCH_SIZE);
     const batchResults = await Promise.all(
       batch.map(async (key) => {
         const [city, state] = key.split('|');
+        console.log(`[MCI-query] city: ${city} state: ${state} equipment_type: ${driver.trailerType}`);
         const row = await prisma.marketSnapshot.findFirst({
           where: {
             city:           { equals: city, mode: 'insensitive' },
@@ -364,7 +402,8 @@ export async function rankLoads(
 
   const missedKeys: string[] = [];
   for (const { key, row } of exactResults) {
-    if (row) {
+    if (row && row.outbound_mci !== 0) {
+      // Real MCI data — use it directly
       console.log(`[MCI] Pass A exact match: ${key} → mci=${row.outbound_mci} (${row.capacity_label})`);
       marketCache.set(key, {
         outbound_mci:          row.outbound_mci,
@@ -375,7 +414,9 @@ export async function rankLoads(
         mciProxyDistanceMiles: null,
       });
     } else {
-      console.log(`[MCI] Pass A miss: ${key} — no MarketSnapshot row, will try proxy`);
+      // No row OR seed placeholder (outbound_mci = 0) — try nearest-city proxy
+      const reason = row ? `outbound_mci=0 (seed placeholder)` : 'no MarketSnapshot row';
+      console.log(`[MCI] Pass A miss: ${key} — ${reason}, will try proxy`);
       missedKeys.push(key);
     }
   }
@@ -391,26 +432,39 @@ export async function rankLoads(
     });
     const allRows = latestDate
       ? await prisma.marketSnapshot.findMany({
-          where:  { equipment_type: driver.trailerType, valid_date: latestDate.valid_date },
+          where:  {
+            equipment_type: driver.trailerType,
+            valid_date:     latestDate.valid_date,
+            outbound_mci:   { not: 0 },  // Skip seed placeholders — only proxy to cities with real data
+          },
           select: { city: true, state: true, outbound_mci: true, capacity_label: true },
         })
       : [];
+    console.log(`[MCI] Pass B: ${allRows.length} cities with real MCI data for proxy lookup`);
 
     for (const key of missedKeys) {
       const [city, state] = key.split('|');
       const destInfo      = destInfos.get(key)!;
 
-      // Resolve destination coordinates: prefer load lat/lon, fall back to CITY_COORDS lookup.
+      // Resolve destination coordinates: load lat/lon → CITY_COORDS → geocoder
       let resolvedLat = destInfo.lat;
       let resolvedLon = destInfo.lon;
       if (resolvedLat == null || resolvedLon == null) {
         const coords = CITY_COORDS[`${city}-${state.toUpperCase()}`];
         if (coords) { resolvedLat = coords.lat; resolvedLon = coords.lon; }
       }
+      if (resolvedLat == null || resolvedLon == null) {
+        // Fallback: live geocode via Nominatim (cached after first call)
+        const geoResult = await geocodeCity(city, state.toUpperCase());
+        if (geoResult) {
+          resolvedLat = geoResult.lat;
+          resolvedLon = geoResult.lon;
+          console.log(`[MCI-proxy] ${city}, ${state}: geocoded → ${geoResult.lat.toFixed(4)}, ${geoResult.lon.toFixed(4)}`);
+        }
+      }
 
       if (resolvedLat == null || resolvedLon == null) {
-        // No coordinates — default Neutral.
-        console.log(`[MCI-proxy] ${city}, ${state}: NO COORDS — defaulting to Neutral (0)`);
+        console.log(`[MCI-proxy] ${city}, ${state}: geocoder returned no coords — defaulting Neutral`);
         marketCache.set(key, { outbound_mci: 0, capacity_label: 'Neutral', mciProxy: false, mciProxyCity: null, mciProxyState: null, mciProxyDistanceMiles: null });
         continue;
       }
@@ -459,10 +513,11 @@ export async function rankLoads(
 
   for (const load of loads) {
     // 0. Trailer compatibility
-    //    FLEX loads are accepted by REEFER and DRY_VAN drivers.
-    //    All other loads must exactly match the driver's trailer type.
+    //    FLEX loads → never reject (accepted by any driver type)
+    //    FLATBED loads → only accepted by FLATBED drivers
+    //    REEFER/DRY_VAN loads → must match driver type exactly
     const trailerOk =
-      (load.trailerType === 'FLEX' && (driver.trailerType === 'REEFER' || driver.trailerType === 'DRY_VAN')) ||
+      load.trailerType === 'FLEX' ||
       load.trailerType === driver.trailerType;
     if (!trailerOk) {
       rejectedLoads.push({
@@ -603,13 +658,17 @@ export async function rankLoads(
     const homewardBias  = computeHomewardBias(load.destination, driver.homeLocation);
     const cycleFitScore = computeCycleFitScore(destinationScore, homewardBias, now, cycleState);
 
-    // 5. Daily revenue score
-    // Ceiling = minEffectiveRPM × avgDailyMiles × 2.5 so loads must be meaningfully
-    // above the survival floor to score high. Loads at 2.5× floor rev/day score 1.0.
-    const loadDays          = Math.max(load.miles / driver.avgDailyMiles, 0.5);
-    const revenuePerDay     = load.rate / loadDays;
-    const dailyCeiling      = driver.minEffectiveRPM * driver.avgDailyMiles * 2.5;
-    const dailyRevenueScore = Math.min(revenuePerDay / dailyCeiling, 1.0);
+    // 5. Revenue per day (step-function estimatedDays, normalized in Pass 2)
+    const estimatedDays = load.miles < 600  ? 1
+                        : load.miles < 1270 ? 2
+                        : load.miles < 1800 ? 3
+                        : load.miles < 2400 ? 4
+                        : 5;
+    const revenuePerDay     = load.rate / estimatedDays;
+    const dailyRevenueScore = 0; // placeholder — revenuePerDayScore set in Pass 2
+
+    // 5b. RPM score: effectiveRPM relative to targetRPM, capped at 2× target
+    const rpmScore = Math.min(effectiveRPM / driver.targetRPM, 2.0) / 2.0;
 
     // 6. Earliest delivery score
     // Only computed when a delivery datetime is present on the load.
@@ -634,12 +693,15 @@ export async function rankLoads(
       mciProxyCity:          snapshot.mciProxyCity,
       mciProxyState:         snapshot.mciProxyState,
       mciProxyDistanceMiles: snapshot.mciProxyDistanceMiles,
+      mciMultiplier:         mciMultiplier(outboundMCI),
       effectiveRPM:          Math.round(effectiveRPM * 1000) / 1000,
+      rpmScore:          Math.round(rpmScore * 1000) / 1000,
       revenueScore:     1,   // load reached scoring — hard gate already passed
       destinationScore: Math.round(destinationScore * 1000) / 1000,
       cycleFitScore:     Math.round(cycleFitScore * 1000) / 1000,
-      dailyRevenueScore: Math.round(dailyRevenueScore * 1000) / 1000,
+      dailyRevenueScore: 0,  // placeholder — set in Pass 2 as revenuePerDayScore
       revenuePerDay:     Math.round(revenuePerDay * 100) / 100,
+      estimatedDays,
       deliveryScore:          Math.round(deliveryScore * 1000) / 1000,
       deliveryScoreAvailable,
       inferredDelivery,
@@ -649,41 +711,37 @@ export async function rankLoads(
     });
   }
 
-  // Pass 2: relative netProfitScore normalization.
-  // Best load in the set scores 1.0; all others scale proportionally.
-  // This avoids any absolute ceiling — the winner always dominates on this dimension.
-  const maxNetProfit = scored.reduce((max, l) => Math.max(max, l.netProfit), 0);
+  // Pass 2: relative normalization + final score.
+  // revenuePerDayScore: best load = 1.0, others proportional.
+  // rpmScore: already computed per-load (effectiveRPM / targetRPM, capped).
+  // netProfitScore: still computed for display, not scored.
+  // score = revenuePerDayScore × 0.60 + rpmScore × 0.40
+  const maxRevenuePerDay = scored.reduce((max, l) => Math.max(max, l.revenuePerDay), 0);
+  const maxNetProfit     = scored.reduce((max, l) => Math.max(max, l.netProfit), 0);
   for (const l of scored) {
+    const revenuePerDayScore = maxRevenuePerDay > 0 && l.revenuePerDay > 0
+      ? l.revenuePerDay / maxRevenuePerDay
+      : 0;
     const netProfitScore = maxNetProfit > 0 && l.netProfit > 0
       ? Math.max(l.netProfit / maxNetProfit, 0)
       : 0;
-    // When deliveryScore is unavailable, redistribute its 0.10 weight proportionally:
-    // 0.35/0.90≈0.389, 0.20/0.90≈0.222, 0.20/0.90≈0.222, 0.15/0.90≈0.167
-    const score = l.deliveryScoreAvailable
-      ? netProfitScore      * 0.35 +
-        l.dailyRevenueScore * 0.20 +
-        l.destinationScore  * 0.20 +
-        l.cycleFitScore     * 0.15 +
-        l.deliveryScore     * 0.10
-      : netProfitScore      * 0.389 +
-        l.dailyRevenueScore * 0.222 +
-        l.destinationScore  * 0.222 +
-        l.cycleFitScore     * 0.167;
-    l.netProfitScore = Math.round(netProfitScore * 1000) / 1000;
-    l.score          = Math.round(score          * 1000) / 1000;
+
+    const baseScore  = revenuePerDayScore * 0.60 + l.rpmScore * 0.40;
+    const mult       = l.mciMultiplier;
+    const finalScore = Math.min(baseScore * mult, 1.0);
+
+    l.dailyRevenueScore = Math.round(revenuePerDayScore * 1000) / 1000;
+    l.netProfitScore    = Math.round(netProfitScore * 1000) / 1000;
+    l.score             = Math.round(finalScore * 1000) / 1000;
 
     const mciCity = l.mciProxy && l.mciProxyCity && l.mciProxyState
       ? `${l.mciProxyCity}-${l.mciProxyState}`
       : `${l.destination.city}-${l.destination.state}`;
     console.log(
-      `[rank-loads-v2] scored id=${l.id}` +
-      ` | effectiveRPM=${l.effectiveRPM.toFixed(3)}` +
-      ` | netProfit=$${l.netProfit.toFixed(0)} netProfitScore=${netProfitScore.toFixed(3)}(×0.35)` +
-      ` | daily=${l.dailyRevenueScore.toFixed(3)}(×0.20) rpd=$${l.revenuePerDay.toFixed(0)}` +
-      ` | destination=${l.destinationScore.toFixed(3)}(×0.20) mci=${l.destinationMCI} mciCity=${mciCity} proxy=${l.mciProxy}` +
-      ` | cycleFit=${l.cycleFitScore.toFixed(3)}(×0.15)` +
-      ` | delivery=${l.deliveryScoreAvailable ? l.deliveryScore.toFixed(3) : 'N/A'}(×${l.deliveryScoreAvailable ? '0.10' : 'skip'})` +
-      ` | score=${score.toFixed(3)}`,
+      `[score] ${l.id} base=${baseScore.toFixed(3)} mci=${l.destinationMCI} multiplier=${mult.toFixed(2)} final=${finalScore.toFixed(3)}` +
+      ` | rpm=$${l.effectiveRPM.toFixed(3)} rpmScore=${l.rpmScore.toFixed(3)}(×0.40)` +
+      ` | rpd=$${l.revenuePerDay.toFixed(0)} rpdScore=${revenuePerDayScore.toFixed(3)}(×0.60) estDays=${l.estimatedDays}` +
+      ` | mciCity=${mciCity}`,
     );
   }
 

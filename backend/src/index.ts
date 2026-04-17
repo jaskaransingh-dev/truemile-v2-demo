@@ -14,12 +14,20 @@ import fleetFinancialsRoutes from './routes/fleet-financials';
 import rankLoadsRouter from './routes/dispatch.routes';
 import dispatchEngineRoutes from './routes/dispatch-engine.routes';
 import dispatchDevRouter from './routes/dispatch-dev.routes';
+import testEmailRouter from './routes/test-email.routes';
+import datMarketSnapshotRouter from './routes/dat-market-snapshot.routes';
 import { authenticateToken } from './middleware/auth.middleware';
 import { tenantScope } from './middleware/tenant.middleware';
 // Rigby routes
 import rigbyRoutes from './routes/rigby';
 import fleetRoutes from './routes/fleet';
 import uploadRoutes from './routes/upload';
+import demoRouter from './routes/demo.routes';
+import driverLocationRouter from './routes/driver-location.routes';
+import driverAppRouter from './routes/driver-app.routes';
+import dispatcherRouter from './routes/dispatcher.routes';
+import dispatcherLoadsRouter from './routes/dispatcher-loads.routes';
+import fleetExpensesRouter from './routes/fleet-expenses.routes';
 import { PollingScheduler } from './services/scheduler/polling.service';
 
 dotenv.config();
@@ -41,11 +49,21 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
+if (process.env.NODE_ENV !== 'production') {
+  app.options('*', (_req: Request, res: Response) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.sendStatus(200);
+  });
+}
+
 // CORS - MUST come before routes!
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow file:// (origin is null/undefined), any localhost, and the configured frontend URL
-    if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin === process.env.FRONTEND_URL) {
+    if (process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin === process.env.FRONTEND_URL) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -59,7 +77,7 @@ app.use(cors({
 // Additional CORS headers for compatibility
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin === process.env.FRONTEND_URL) {
+  if (!origin || origin === 'null' || origin.startsWith('http://localhost') || origin === process.env.FRONTEND_URL || origin.startsWith('chrome-extension://')) {
     res.header('Access-Control-Allow-Origin', origin || '*');
   }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS'); // ADD PATCH
@@ -113,6 +131,15 @@ app.use('/api/fleet-financials', fleetFinancialsRoutes);
 app.use('/api/rigby', rigbyRoutes);
 app.use('/api/fleet', fleetRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/drivers', driverLocationRouter);
+app.use('/api/drivers', driverAppRouter);
+app.use('/api/documents', driverAppRouter);
+app.use('/api/dispatcher', dispatcherRouter);
+app.use('/api', dispatcherLoadsRouter); // exposes /drivers/:id/loads, /loads, /loads/:id/*, /drivers/:id/cycle*
+app.use('/api/fleet', fleetExpensesRouter); // expense categories, KPIs, expenses, settings
+
+// Integrations
+app.use('/api/integrations/dat/market-snapshot', datMarketSnapshotRouter);
 
 // Dispatch routes
 app.use('/api/dispatch', authenticateToken, tenantScope, rankLoadsRouter);
@@ -124,6 +151,11 @@ if (process.env.NODE_ENV !== 'production') {
     res.header('Access-Control-Allow-Origin', '*');
     next();
   }, dispatchDevRouter);
+  app.use('/api/dev/test-email', testEmailRouter);
+  app.use('/api/demo', (_req: Request, res: Response, next: NextFunction) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    next();
+  }, demoRouter);
 }
 
 // ============ Error Handling ============

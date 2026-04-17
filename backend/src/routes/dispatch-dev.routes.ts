@@ -31,7 +31,7 @@ import {
 import { rankRoutes } from '../services/dispatch/route-sequencer';
 import { pregeocode } from '../services/dispatch/geocoder';
 import { calculateDeadheadMiles } from '../services/dispatch/load-metrics';
-import { rankLoads } from '../services/dispatch/decision-engine-v2';
+import { rankLoads, normalizeTrailerType } from '../services/dispatch/decision-engine-v2';
 import type { LoadDecision } from '../services/dispatch/decision-engine';
 import type { CostModel } from '../services/dispatch/cycle-profit';
 
@@ -152,26 +152,30 @@ router.post('/rank-loads-v2', async (req: Request, res: Response) => {
       deliveryDate:     (l.deliveryDate   ?? l.pickupWindowEnd   ?? '').substring(0, 10),
       pickupDate:       (l.pickupDate     ?? l.pickupWindowStart ?? '').substring(0, 10),
       // Raw ISO datetimes passed through for display — not truncated.
-      pickupWindowStart: l.pickupWindowStart ?? undefined,
-      deliveryDeadline:  l.pickupWindowEnd   ?? undefined,
+      pickupWindowStart: l.pickupWindowStart              ?? undefined,
+      deliveryDeadline:  (l as any).deliveryDeadline      ?? undefined,
       // Used for PICKUP_WINDOW_EXPIRED check.
-      pickupWindowEnd:   l.pickupWindowEnd   ?? undefined,
-      trailerType:      l.trailerType,
+      pickupWindowEnd:   l.pickupWindowEnd                ?? undefined,
+      trailerType:      normalizeTrailerType(l.trailerType),
       brokerName:       l.brokerName,
     }));
 
     const minEffectiveRPM = body.driver.minEffectiveRPM ?? 1.62;
 
+    console.log(`[rank-loads-v2] incoming driver.trailerType: "${body.driver.trailerType}" → normalized: "${normalizeTrailerType(body.driver.trailerType)}"`);
+
     const driver = {
       id:              body.driverId,
       homeLocation:    body.driver.homeLocation,
       currentLocation,
-      trailerType:     body.driver.trailerType,
+      trailerType:     normalizeTrailerType(body.driver.trailerType),
       avgDailyMiles:   body.driver.avgDailyMiles ?? 650,
       minEffectiveRPM,
-      targetRPM:       minEffectiveRPM * 1.15, // 15% above survival floor
+      targetRPM:       body.driver.targetRPM ?? (minEffectiveRPM * 1.15),
       dwellDays:       0.5,
       avoidStates:     body.driver.avoidStates ?? [],
+      variableCPM:     (body.driver as any).variableCPM   ?? undefined,
+      factoringRate:   (body.driver as any).factoringRate ?? undefined,
     };
 
     const cycleState = {
@@ -180,6 +184,8 @@ router.post('/rank-loads-v2', async (req: Request, res: Response) => {
       totalCycleDays: cycleDays,
     };
 
+    console.log('[rank-loads-v2] first candidateLoad:', JSON.stringify(candidateLoads[0]));
+    console.log('[rank-loads-v2] driver:', JSON.stringify(driver));
     const t0                           = Date.now();
     const { rankedLoads, rejectedLoads } = await rankLoads(candidateLoads, driver, cycleState, now);
     const executionMs                  = Date.now() - t0;
@@ -194,8 +200,10 @@ router.post('/rank-loads-v2', async (req: Request, res: Response) => {
       rejectedLoads,
     });
 
-  } catch (err) {
-    console.error('[dev/dispatch/rank-loads-v2] Error:', err);
+  } catch (err: any) {
+    console.error('[rank-loads-v2] ERROR:', err?.message);
+    console.error('[rank-loads-v2] STACK:', err?.stack);
+    console.error('[rank-loads-v2] first candidateLoad:', JSON.stringify(body.candidateLoads?.[0]));
     return res.status(500).json({ success: false, error: 'Internal server error during v2 ranking' });
   }
 });

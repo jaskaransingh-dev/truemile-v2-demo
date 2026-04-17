@@ -48,6 +48,11 @@ export class GmailOAuthService {
 
       console.log('✓ Access token received');
       console.log('✓ Refresh token received:', !!tokens.refresh_token);
+      if (tokens.refresh_token) {
+        console.log('═══ REFRESH TOKEN (copy to .env as GOOGLE_REFRESH_TOKEN) ═══');
+        console.log(tokens.refresh_token);
+        console.log('═════════════════════════════════════════════════════════════');
+      }
 
       oauth2Client.setCredentials(tokens);
       const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
