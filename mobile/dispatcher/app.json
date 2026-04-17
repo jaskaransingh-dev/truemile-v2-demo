@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "dispatcher",
+    "slug": "dispatcher",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D0F12"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.truemile.dispatcher",
+      "config": {
+        "googleMapsApiKey": "AIzaSyAu2dMuaTaBlOxdqZ0GtAy8kYm_7niHWDQ"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0D0F12"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.truemile.dispatcher",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAu2dMuaTaBlOxdqZ0GtAy8kYm_7niHWDQ"
+        }
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}

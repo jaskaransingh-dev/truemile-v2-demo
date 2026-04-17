@@ -341,7 +341,7 @@
     <div class="hero">
       <div>
         <h1>Dispatch Test Portal</h1>
-        <p>Backend-mapped portal for <strong>/api/dev/dispatch/rank-loads</strong> and <strong>/api/dev/dispatch/rank-routes</strong>.</p>
+        <p>Backend-mapped portal for <strong>/api/dev/dispatch/rank-loads-v2</strong> and <strong>/api/dev/dispatch/rank-routes</strong>.</p>
       </div>
       <div class="badge">Real engine &middot; real request schema &middot; Excel import</div>
     </div>
@@ -458,6 +458,10 @@
               <input id="minEffectiveRPM" type="number" step="0.01" value="1.62" />
             </div>
             <div class="field">
+              <label>Target RPM</label>
+              <input id="targetRPM" type="number" step="0.01" value="3.50" />
+            </div>
+            <div class="field">
               <label>Avg daily miles</label>
               <input id="avgDailyMiles" type="number" step="1" value="650" />
             </div>
@@ -539,6 +543,7 @@
       { key: 'deadheadMiles', label: 'deadhead miles', required: false },
       { key: 'brokerName', label: 'broker name', required: false },
       { key: 'numberOfStops', label: 'number of stops', required: false },
+      { key: 'description', label: 'description / comments', required: false },
     ];
 
     const aliases = {
@@ -557,6 +562,7 @@
       deadheadMiles: ['deadhead', 'deadhead miles', 'deadheadmiles', 'dh miles', 'dh mi', 'dh', 'dh-o'],
       brokerName: ['broker', 'broker name'],
       numberOfStops: ['stops', 'number of stops'],
+      description: ['description', 'comments', 'notes', 'load notes', 'special instructions'],
     };
 
     const $ = (id) => document.getElementById(id);
@@ -564,7 +570,7 @@
     function updateEndpointInfo() {
       const base = $('backendBaseUrl').value.trim().replace(/\/$/, '');
       const mode = $('modeSelect').value;
-      const path = mode === 'routes' ? '/rank-routes' : '/rank-loads';
+      const path = mode === 'routes' ? '/rank-routes' : '/rank-loads-v2';
       $('endpointInfo').textContent = `Current endpoint: ${base}${path}`;
       $('sumMode').textContent = mode === 'routes' ? 'Routes' : 'Loads';
     }
@@ -846,6 +852,12 @@
           return;
         }
 
+        const description = String(get('description') || '').toLowerCase();
+        if (description.includes('hazmat')) {
+          skipped.push(`${ext}: hazmat load excluded`);
+          return;
+        }
+
         if (!origin.city || !origin.state || !destination.city || !destination.state || !rate || !miles) {
           skipped.push(`${ext}: missing origin/destination/rate/miles`);
           return;
@@ -941,6 +953,7 @@
           homeDays: numeric($('homeDays').value, 2),
           maxDeadheadMiles: numeric($('maxDeadheadMiles').value, 250),
           minEffectiveRPM: numeric($('minEffectiveRPM').value, 1.62),
+          targetRPM: numeric($('targetRPM').value, 3.50),
           avgDailyMiles: numeric($('avgDailyMiles').value, 650),
           survivalMarginPercent: numeric($('survivalMarginPercent').value, 5),
         },
@@ -960,7 +973,7 @@
 
     function currentEndpoint() {
       const base = $('backendBaseUrl').value.trim().replace(/\/$/, '');
-      return `${base}/${$('modeSelect').value === 'routes' ? 'rank-routes' : 'rank-loads'}`;
+      return `${base}/${$('modeSelect').value === 'routes' ? 'rank-routes' : 'rank-loads-v2'}`;
     }
 
     async function runEngine() {
@@ -1111,9 +1124,12 @@
             ${metric('Cycle fit', item.cycleFitScore != null ? Number(item.cycleFitScore).toFixed(3) : '&mdash;')}
           </div>
           <div class="metric-grid" style="margin-top:8px">
-            ${metric('RPM score', item.rpmScore != null ? Number(item.rpmScore).toFixed(3) : '&mdash;')}
+            ${metric('Daily rev score', item.dailyRevenueScore != null ? Number(item.dailyRevenueScore).toFixed(3) : '&mdash;')}
+            ${metric('Rev / day', item.revenuePerDay != null ? '$' + Number(item.revenuePerDay).toLocaleString('en-US', {maximumFractionDigits: 0}) : '&mdash;')}
             ${metric('Delivery score', item.deliveryScore != null ? Number(item.deliveryScore).toFixed(3) : '&mdash;')}
             ${metric('Pickup', fmtDt(item.pickupWindowStart))}
+          </div>
+          <div class="metric-grid" style="margin-top:8px">
             ${metric('Drop-off', fmtDt(item.deliveryDeadline))}
           </div>`;
       } else {

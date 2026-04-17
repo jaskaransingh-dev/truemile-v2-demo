@@ -70,14 +70,14 @@ No preamble. Just the spec.
 Before touching any code:
 
 1. Read CLAUDE.md in the repo root.
-2. Check .claude/logs/ — read the most recent 2 dated log files for context
+2. Check claude/logs/ — read the most recent 2 dated log files for context
    on what was completed and what's in progress.
 3. Load the relevant skill docs for this session:
-   - .claude/skills/dispatch-engine.md — any work touching decision-engine-v2.ts,
+   - claude/skills/dispatch-engine.md — any work touching decision-engine-v2.ts,
      /rank-loads-v2, scoring logic, rejection codes, or candidateLoads shape
-   - .claude/skills/market-data.md — any work touching MarketSnapshot,
+   - claude/skills/market-data.md — any work touching MarketSnapshot,
      dat-ingest.service.ts, or MCI values
-   - .claude/skills/cost-model.md — any work touching RPM floors,
+   - claude/skills/cost-model.md — any work touching RPM floors,
      minEffectiveRPM, targetRPM, or cost inputs
 
 Session rules — enforce these throughout:
@@ -127,7 +127,7 @@ For every file modified:
 Fix anything clearly broken. Flag anything that needs a decision.
 
 STEP 4 — WRITE SESSION LOG
-Create .claude/logs/[TODAY'S DATE].md with this exact structure:
+Create claude/logs/[TODAY'S DATE].md with this exact structure:
 
 # [TODAY'S DATE]
 
@@ -186,11 +186,11 @@ Fix the issue. Do not touch decision-engine.ts, route-sequencer.ts, or /rank-rou
 ## LOG FILE STRUCTURE
 
 ```
-.claude/logs/
+claude/logs/
 ├── 2026-03-30.md
 ├── 2026-03-29.md
 └── 2026-03-28.md
 ```
 
 Cline reads the most recent 2 files at session start for continuity.
-Do not use SESSION_LOG.md in root — dated files in .claude/logs/ only.
+Do not use SESSION_LOG.md in root — dated files in claude/logs/ only.

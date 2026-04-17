@@ -10,10 +10,10 @@ const TEST_USER_ID = 'test-user-123'; // Replace with your actual user ID
 // Gmail OAuth URL
 const gmailParams = new URLSearchParams({
   access_type: 'offline',
-  scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email openid',
+  scope: 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email openid',
   response_type: 'code',
   client_id: process.env.GOOGLE_CLIENT_ID,
-  redirect_uri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/gmail/callback',
+  redirect_uri: 'http://localhost:3000/api/auth/gmail/callback',
   state: JSON.stringify({ userId: TEST_USER_ID, provider: 'gmail' }),
   prompt: 'consent'
 });

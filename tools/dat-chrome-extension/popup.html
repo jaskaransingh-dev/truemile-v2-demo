@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrueMile Settings</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 16px;
+    }
+    h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #60a5fa;
+      margin-bottom: 14px;
+      letter-spacing: 0.02em;
+    }
+    .field { margin-bottom: 10px; }
+    label {
+      display: block;
+      font-size: 11px;
+      color: #94a3b8;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    input {
+      width: 100%;
+      background: #1e2433;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      color: #e2e8f0;
+      font-size: 13px;
+      padding: 6px 8px;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: #60a5fa; }
+    select {
+      width: 100%;
+      background: #1e2433;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      color: #e2e8f0;
+      font-size: 13px;
+      padding: 6px 8px;
+      outline: none;
+      cursor: pointer;
+    }
+    .row { display: flex; gap: 8px; }
+    .row .field { flex: 1; }
+    button {
+      width: 100%;
+      margin-top: 12px;
+      padding: 8px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #1d4ed8; }
+    #status {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #4ade80;
+      text-align: center;
+      min-height: 16px;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid #1e2433;
+      margin: 12px 0;
+    }
+    .calc-toggle {
+      display: block;
+      font-size: 11px;
+      color: #60a5fa;
+      cursor: pointer;
+      margin-top: 4px;
+      background: none;
+      border: none;
+      padding: 0;
+      width: auto;
+      font-weight: 400;
+      text-align: left;
+    }
+    .calc-toggle:hover { text-decoration: underline; background: none; }
+    #calcSection {
+      display: none;
+      background: #161b27;
+      border: 1px solid #1e2433;
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 8px;
+    }
+    #calcSection.open { display: block; }
+    .calc-heading {
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 8px 0 4px;
+    }
+    .calc-heading:first-child { margin-top: 0; }
+    #calcSection input {
+      font-size: 12px;
+      padding: 4px 6px;
+    }
+    #calcSection .field { margin-bottom: 6px; }
+    #calcBtn {
+      margin-top: 8px;
+      padding: 6px;
+      font-size: 12px;
+      background: #1e40af;
+    }
+    #calcBtn:hover { background: #1d4ed8; }
+    .calc-clear {
+      display: inline;
+      font-size: 11px;
+      color: #94a3b8;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      margin-left: 8px;
+      width: auto;
+      font-weight: 400;
+    }
+    .calc-clear:hover { color: #e2e8f0; background: none; }
+    #cpmBreakdown {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 4px;
+      min-height: 14px;
+    }
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .toggle-label {
+      font-size: 12px;
+      color: #e2e8f0;
+      text-transform: none;
+      letter-spacing: 0;
+      margin-bottom: 0;
+    }
+    .toggle-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #2563eb;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h2>TrueMile DAT Ranker</h2>
+
+  <div class="field">
+    <label>Backend URL</label>
+    <input id="backendUrl" type="text" placeholder="http://localhost:3000" />
+  </div>
+
+  <hr class="divider" />
+
+  <div class="row">
+    <div class="field">
+      <label>Home City</label>
+      <input id="homeCity" type="text" placeholder="Dallas" />
+    </div>
+    <div class="field">
+      <label>Home State</label>
+      <input id="homeState" type="text" placeholder="TX" maxlength="2" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Avoid States</label>
+      <input id="avoidStates" type="text" placeholder="CA,OR" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Min RPM ($)</label>
+      <input id="minRPM" type="number" step="0.01" placeholder="1.80" />
+    </div>
+    <div class="field">
+      <label>Target RPM ($)</label>
+      <input id="targetRPM" type="number" step="0.01" placeholder="2.10" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>All-In CPM ($)</label>
+      <input id="variableCPM" type="number" step="0.001" placeholder="1.606" />
+    </div>
+    <div class="field">
+      <label>Factoring Rate</label>
+      <input id="factoringRate" type="number" step="0.001" placeholder="0.018" />
+    </div>
+  </div>
+  <div id="cpmBreakdown"></div>
+  <button class="calc-toggle" id="calcToggle">Calculate from cost structure &#9660;</button>
+
+  <div id="calcSection">
+    <div class="calc-heading">Fixed Monthly Costs</div>
+    <div class="row">
+      <div class="field"><label>Truck Payment ($)</label><input id="calcTruckPayment" type="number" step="1" placeholder="0" /></div>
+      <div class="field"><label>Trailer Payment ($)</label><input id="calcTrailerPayment" type="number" step="1" placeholder="0" /></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Insurance ($)</label><input id="calcInsurance" type="number" step="1" placeholder="0" /></div>
+      <div class="field"><label>Repairs &amp; Maint ($)</label><input id="calcRepairs" type="number" step="1" placeholder="0" /></div>
+    </div>
+    <div class="field"><label>Other Fixed ($)</label><input id="calcOtherFixed" type="number" step="1" placeholder="0" /></div>
+
+    <div class="calc-heading">Variable Per Mile</div>
+    <div class="row">
+      <div class="field"><label>Driver Pay ($/mi)</label><input id="calcDriverPay" type="number" step="0.01" placeholder="0" /></div>
+      <div class="field"><label>Fuel Cost ($/mi)</label><input id="calcFuelCost" type="number" step="0.01" placeholder="0" /></div>
+    </div>
+    <div class="field"><label>Other Variable ($/mi)</label><input id="calcOtherVariable" type="number" step="0.01" placeholder="0" /></div>
+
+    <div class="calc-heading">Operating Assumption</div>
+    <div class="field"><label>Avg Miles/Month</label><input id="calcAvgMilesMonth" type="number" step="100" placeholder="10000" /></div>
+
+    <button id="calcBtn">Calculate CPM</button>
+    <button class="calc-clear" id="calcClear">Clear</button>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Avg Daily Miles</label>
+      <input id="avgDailyMiles" type="number" placeholder="550" />
+    </div>
+    <div class="field">
+      <label>Cycle Days</label>
+      <input id="cycleDays" type="number" placeholder="17" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Home Days</label>
+      <input id="homeDays" type="number" placeholder="3" />
+    </div>
+    <div class="field">
+      <label>Completed Cycles</label>
+      <input id="completedCycles" type="number" placeholder="0" />
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Cycle Start Date (YYYY-MM-DD)</label>
+    <input id="cycleStartDate" type="date" />
+  </div>
+
+  <hr class="divider" />
+
+  <div class="toggle-row">
+    <label class="toggle-label" for="rejectDropTrailer">Reject drop trailer loads</label>
+    <input type="checkbox" id="rejectDropTrailer" checked />
+  </div>
+  <div class="toggle-row">
+    <label class="toggle-label" for="rejectTeamLoads">Reject team loads</label>
+    <input type="checkbox" id="rejectTeamLoads" checked />
+  </div>
+
+  <button id="save">Save Settings</button>
+  <div id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

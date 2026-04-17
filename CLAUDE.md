@@ -97,19 +97,26 @@ Driver state + load candidates
 ### decision-engine-v2 Scoring Formula
 
 ```
-score = revenueScore×0.30 + destinationScore×0.25 + cycleFitScore×0.20 + rpmScore×0.15 + deliveryScore×0.10
+score = revenuePerDayScore × 0.60 + rpmScore × 0.40
 ```
 
+Simplified to two dimensions because 90% of DAT loads lack pickup/delivery datetimes,
+making destination/cycle/delivery scores unreliable. MCI, cycleFit, deliveryScore, and
+netProfitScore are still computed and returned on RankedLoad for display/logging — they
+just don't factor into the score.
+
+`revenueScore` is NOT in the weighted sum — it is a hard gate. Loads with `effectiveRPM < minEffectiveRPM` are rejected as `BELOW_MIN_RPM` before any scoring. On `RankedLoad` output, `revenueScore` is always `1`.
+
 Component definitions:
-- `effectiveRPM` = `rate / (miles + deadheadMiles)` — **never use rate/miles alone**
-- `revenueScore` = binary: `1` if `effectiveRPM >= minEffectiveRPM`, else `0`
-- `destinationScore` = `marketStrength` = `(outbound_mci + 100) / 200` → 0 to 1
-- `cycleFitScore` = blend of destinationScore + homewardBias weighted by cycle position
-  - cyclePosition < 0.4 (early): reward strong outbound markets
-  - cyclePosition 0.4–0.7 (mid): blend market + homeward bias
-  - cyclePosition > 0.7 (late): prioritize getting home
+- `revenuePerDayScore` = relative normalization (best load in set = 1.0)
+  - `estimatedDays` = step function: <600mi→1d, 600–1269→2d, 1270–1799→3d, 1800–2399→4d, ≥2400→5d
+  - `revenuePerDay` = `rate / estimatedDays`
+  - Pass 2: `maxRevenuePerDay = max(revenuePerDay across all scored loads)` → `revenuePerDayScore = revenuePerDay / maxRevenuePerDay`
 - `rpmScore` = `min(effectiveRPM / targetRPM, 2.0) / 2.0`
-- `deliveryScore` = `max(0, 1 - daysUntilDelivery / 14)`
+  - `effectiveRPM` = `rate / miles` (loaded miles only — deadhead unreliable from scraper)
+  - `targetRPM` from request body
+- `netProfitScore` = still computed for display (relative, best = 1.0) but weight = 0
+- `destinationScore`, `cycleFitScore`, `deliveryScore` = still computed, returned, weight = 0
 
 Top 2 ranked loads get `urgentCall: true`. All others false.
 
@@ -124,6 +131,7 @@ All rejected loads are returned in `rejectedLoads[]` with `{ externalId, violati
 | `PICKUP_WINDOW_EXPIRED` | `load.pickupWindowEnd` exists and is before `now` |
 | `PICKUP_UNREACHABLE` | `pickupWindowEnd` is in the future but `deadheadMiles / avgDailyMiles > daysUntilWindowClose` |
 | `HOME_TIME_EXCEEDED` | After delivery + transit home, driver misses `cycleEndDate` |
+| `BELOW_MIN_RPM` | `effectiveRPM < driver.minEffectiveRPM` — evaluated after home-time, before scoring |
 
 ### cycleState Derivation (server-side — callers do not send this)
 

@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "TrueMile DAT Ranker",
+  "version": "1.0.0",
+  "description": "Ranks DAT search results using the TrueMile dispatch engine",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://one.dat.com/*",
+    "http://localhost:3000/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TrueMile DAT Ranker"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://one.dat.com/search-loads*"],
+      "js": ["content.js"],
+      "css": ["sidebar.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
