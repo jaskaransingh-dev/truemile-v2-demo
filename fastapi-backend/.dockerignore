@@ -1,0 +1,8 @@
+old_data/
+data/
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+get_drive_token.py

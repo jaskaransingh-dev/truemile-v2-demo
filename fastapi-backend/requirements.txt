@@ -1,0 +1,10 @@
+fastapi[standard]
+anthropic
+pdf2image
+Pillow
+sqlalchemy[asyncio]
+asyncpg
+pydantic-settings
+python-multipart
+google-auth
+google-api-python-client
