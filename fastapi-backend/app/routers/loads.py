@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.db import get_db, Load, Driver, build_load
@@ -125,7 +126,11 @@ async def import_from_local(db: AsyncSession = Depends(get_db)):
                     await db.flush()
                     inserted.append({"file": pdf.name, "driver": driver_name, "id": str(load.id)})
                     logger.info(f"[import] ✓ {pdf.name} — rate={parsed.get('rate')} {parsed.get('pickupCity')} → {parsed.get('dropoffCity')}")
+                except IntegrityError:
+                    await db.rollback()
+                    logger.info(f"[import] ~ {pdf.name} — duplicate load_number, skipped")
                 except Exception as e:
+                    await db.rollback()
                     logger.warning(f"[import] ✗ {pdf.name} — {e}")
                     failed.append({"file": pdf.name, "driver": driver_name, "error": str(e)})
 
