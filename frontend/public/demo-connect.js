@@ -540,75 +540,173 @@
     var wrap=document.querySelector('.scene[data-scene="3"] .an-wrap');
     if(!wrap) return;
     var drivers=['Max','Monu','Paul'];
-    var totRev=0,totLoads=S.loads.filter(function(l){return!l.cancelled;}).length,rpmSum=0,rpmN=0,totMiles=0;
-    S.loads.filter(function(l){return!l.cancelled;}).forEach(function(l){
-      totRev+=l.rate; totMiles+=l.miles; if(l.rpm){rpmSum+=l.rpm;rpmN++;}
-    });
+    var active=S.loads.filter(function(l){return!l.cancelled;});
+    var totRev=0,totLoads=active.length,rpmSum=0,rpmN=0,totMiles=0,bestRpm=0,bestRpmDriver='';
+    active.forEach(function(l){ totRev+=l.rate; totMiles+=l.miles; if(l.rpm){rpmSum+=l.rpm;rpmN++;} });
     var avgRpm=rpmN?rpmSum/rpmN:0;
 
+    /* per-driver stats for sparklines */
+    var driverData={};
+    drivers.forEach(function(d){
+      var dl=S.byDriver[d]||[]; var dr=0,dn=0,drs=0,drn=0,dmi=0,dld=0;
+      dl.filter(function(l){return!l.cancelled;}).forEach(function(l){ dr+=l.rate;dn++;dmi+=l.miles;if(l.rpm){drs+=l.rpm;drn++;} });
+      ['2026-02','2026-03','2026-04','2026-05'].forEach(function(m){ dld+=driverStats(d,m).loadedDays; });
+      var drpm=drn?drs/drn:0;
+      if(drpm>bestRpm){bestRpm=drpm;bestRpmDriver=d;}
+      driverData[d]={rev:dr,loads:dn,miles:dmi,rpm:drpm,loadedDays:dld};
+    });
+
     var months=['2026-02','2026-03','2026-04','2026-05'];
+    /* per-month revenue split by driver */
     var revByMonth=months.map(function(m){
-      var r=0; S.loads.filter(function(l){return!l.cancelled;}).forEach(function(l){
-        if(l.pickupDate&&l.pickupDate.slice(0,7)===m) r+=l.rate;
-      }); return r;
+      var tot=0; active.forEach(function(l){ if(l.pickupDate&&l.pickupDate.slice(0,7)===m) tot+=l.rate; }); return tot;
+    });
+    var revByMonthDriver={};
+    drivers.forEach(function(d){
+      revByMonthDriver[d]=months.map(function(m){
+        var r=0; (S.byDriver[d]||[]).filter(function(l){return!l.cancelled;}).forEach(function(l){
+          if(l.pickupDate&&l.pickupDate.slice(0,7)===m) r+=l.rate;
+        }); return r;
+      });
     });
     var maxM=Math.max.apply(null,revByMonth.concat([1]));
+    var maxDM=Math.max.apply(null,[].concat.apply([],drivers.map(function(d){ return revByMonthDriver[d]||[0]; })).concat([1]));
+
+    /* RPM by driver by month */
+    var rpmByMonthDriver={};
+    drivers.forEach(function(d){
+      rpmByMonthDriver[d]=months.map(function(m){
+        var rs=0,rn=0; (S.byDriver[d]||[]).filter(function(l){return!l.cancelled&&l.pickupDate&&l.pickupDate.slice(0,7)===m&&l.rpm;}).forEach(function(l){rs+=l.rpm;rn++;});
+        return rn?rs/rn:0;
+      });
+    });
+
+    var DCOLORS={Max:'var(--teal)',Monu:'#3B82F6',Paul:'var(--amber)'};
 
     var html='<div class="tm-an">';
+
+    /* KPIs */
     html+='<div class="tm-kpis">';
-    html+=kpi('Total revenue',money(totRev),'Feb–May 2026 · active loads');
-    html+=kpi('Active loads',String(totLoads),'Max · Monu · Paul');
-    html+=kpi('Avg RPM','$'+avgRpm.toFixed(2),'rate per loaded mile');
-    html+=kpi('Loaded miles',fmt(Math.round(totMiles)),'where reported');
+    html+=kpi('Total revenue',money(totRev),'Feb – May 2026 · active loads');
+    html+=kpi('Active loads',String(totLoads),'across Max · Monu · Paul');
+    html+=kpi('Avg RPM','$'+avgRpm.toFixed(2),'fleet-wide · loaded miles');
+    html+=kpi('Best RPM driver',bestRpmDriver,'$'+bestRpm.toFixed(2)+'/mi this period');
+    html+='</div>';
+
+    /* Driver scorecards */
+    html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">';
+    drivers.forEach(function(d){
+      var dd=driverData[d];
+      var prev=revByMonthDriver[d]; var lastTwo=[prev[2]||0,prev[3]||0]; var trend=lastTwo[1]>lastTwo[0]?'↑':'↓';
+      var trendColor=lastTwo[1]>lastTwo[0]?'var(--teal-deep)':'var(--red)';
+      html+='<div class="tm-panel" style="cursor:default;">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+          '<strong style="font-size:13px;">'+d+'</strong>' +
+          '<span style="font-size:11px;font-weight:600;color:'+DCOLORS[d]+'">Truck #'+TRUCK[d]+'</span>' +
+        '</div>' +
+        '<div style="font-size:22px;font-weight:700;color:var(--ink);margin-bottom:2px;">'+money(dd.rev)+'</div>' +
+        '<div style="font-size:11px;color:var(--ink-3);">'+dd.loads+' loads · '+dd.loadedDays+' loaded days</div>' +
+        '<div style="display:flex;gap:14px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line-2);">' +
+          '<div><div style="font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;">RPM</div>' +
+            '<div style="font-size:14px;font-weight:600;color:var(--ink);">$'+dd.rpm.toFixed(2)+'</div></div>' +
+          '<div><div style="font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;">Miles</div>' +
+            '<div style="font-size:14px;font-weight:600;color:var(--ink);">'+fmt(Math.round(dd.miles))+'</div></div>' +
+          '<div><div style="font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;">Trend</div>' +
+            '<div style="font-size:14px;font-weight:600;color:'+trendColor+';">'+trend+' Apr→May</div></div>' +
+        '</div>' +
+      '</div>';
+    });
     html+='</div>';
 
     html+='<div class="tm-an-grid">';
-    /* Rev by month */
-    html+='<div class="tm-panel"><h4>Revenue by month</h4>';
+
+    /* Revenue by month stacked bars */
+    html+='<div class="tm-panel"><h4>Revenue by month · by driver</h4>';
     months.forEach(function(m,i){
-      html+='<div class="tm-br"><span style="font-size:11px;color:var(--ink-2)">'+MON[m].slice(0,3)+'</span>'+
-        '<div class="tm-track"><div class="tm-fill" style="width:'+Math.round(revByMonth[i]/maxM*100)+'%"></div></div>'+
-        '<div class="tm-bv">'+money(revByMonth[i])+'</div></div>';
-    });
-    html+='</div>';
-
-    /* Driver table */
-    html+='<div class="tm-panel"><h4>By driver · all months</h4>';
-    html+='<table class="tm-tbl"><thead><tr><th>Driver</th><th>Loads</th><th>Revenue</th><th>RPM</th><th>Util days</th></tr></thead><tbody>';
-    drivers.forEach(function(d){
-      var rev=0,n=0,rs=0,rn=0,ld=0;
-      (S.byDriver[d]||[]).filter(function(l){return!l.cancelled;}).forEach(function(l){
-        rev+=l.rate;n++;if(l.rpm){rs+=l.rpm;rn++;}
+      html+='<div style="margin-bottom:9px;">' +
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-2);margin-bottom:3px;">' +
+          '<span>'+MON[m].slice(0,3)+'</span><span>'+money(revByMonth[i])+'</span></div>' +
+        '<div style="height:14px;background:var(--line-2);border-radius:4px;overflow:hidden;display:flex;">';
+      drivers.forEach(function(d){
+        var w=maxM?Math.round((revByMonthDriver[d][i]||0)/maxM*100):0;
+        html+='<div style="width:'+w+'%;background:'+DCOLORS[d]+';opacity:.85;" title="'+d+': '+money(revByMonthDriver[d][i]||0)+'"></div>';
       });
-      months.forEach(function(m){ ld+=driverStats(d,m).loadedDays; });
-      html+='<tr><td><strong>'+d+'</strong></td><td class="mono">'+n+'</td><td class="mono teal">'+money(rev)+'</td>'+
-        '<td class="mono">'+(rn?'$'+(rs/rn).toFixed(2):'—')+'</td><td class="mono">'+ld+'d</td></tr>';
+      html+='</div></div>';
+    });
+    html+='<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--ink-3);">';
+    drivers.forEach(function(d){ html+='<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+DCOLORS[d]+';margin-right:4px;"></span>'+d+'</span>'; });
+    html+='</div></div>';
+
+    /* RPM by driver by month */
+    html+='<div class="tm-panel"><h4>RPM by driver · by month</h4>';
+    html+='<table class="tm-tbl"><thead><tr><th>Month</th>';
+    drivers.forEach(function(d){ html+='<th>'+d+'</th>'; });
+    html+='</tr></thead><tbody>';
+    months.forEach(function(m,i){
+      html+='<tr><td style="font-size:11px;color:var(--ink-2)">'+MON[m]+'</td>';
+      drivers.forEach(function(d){
+        var r=rpmByMonthDriver[d][i];
+        html+='<td class="mono" style="color:'+rpmColor(r)+';">'+(r?'$'+r.toFixed(2):'—')+'</td>';
+      });
+      html+='</tr>';
     });
     html+='</tbody></table></div></div>';
 
-    /* Load detail table */
-    html+='<div class="tm-panel" style="margin-top:14px;"><h4>Load detail — most recent 20 (click to edit)</h4>';
-    html+='<table class="tm-tbl"><thead><tr><th>Load #</th><th>Driver</th><th>Lane</th><th>Pickup</th><th>Rate</th><th>RPM</th><th>Status</th></tr></thead><tbody id="an-load-table">';
-    var recent=S.loads.slice().sort(function(a,b){return(b.pickupDate||'')<(a.pickupDate||'')?-1:1;}).slice(0,20);
-    recent.forEach(function(l){
-      html+='<tr class="clickable" data-lid="'+l.id+'">'+
-        '<td class="mono">'+l.loadNumber+'</td>'+
-        '<td>'+l.driver+'</td>'+
-        '<td style="font-size:11px;">'+(l.pickupCity||'?')+', '+l.pickupState+' → '+(l.dropoffCity||'?')+', '+l.dropoffState+'</td>'+
-        '<td class="mono" style="font-size:11px;">'+(l.pickupDate?l.pickupDate.slice(0,10):'—')+'</td>'+
-        '<td class="mono teal">'+money(l.rate)+'</td>'+
-        '<td class="mono">'+(l.rpm?'$'+l.rpm.toFixed(2):'—')+'</td>'+
-        '<td><span class="tm-badge '+l.status+'">'+l.status+'</span></td>'+
-        '</tr>';
-    });
-    html+='</tbody></table></div></div>';
+    /* Full load table */
+    html+='<div class="tm-panel" style="margin-top:14px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
+        '<h4 style="margin:0;">Load detail · all '+S.loads.length+' loads (click any row to edit)</h4>' +
+        '<div style="display:flex;gap:6px;" id="an-filter-btns">' +
+          '<button class="tm-btn ghost tm-btn-sm an-filter active" data-filter="all">All</button>' +
+          drivers.map(function(d){ return '<button class="tm-btn ghost tm-btn-sm an-filter" data-filter="'+d+'">'+d+'</button>'; }).join('') +
+          '<button class="tm-btn ghost tm-btn-sm an-filter" data-filter="COMPLETED">Completed</button>' +
+          '<button class="tm-btn ghost tm-btn-sm an-filter" data-filter="CANCELLED">Cancelled</button>' +
+        '</div>' +
+      '</div>' +
+      '<table class="tm-tbl"><thead><tr><th>Load #</th><th>Driver</th><th>Lane</th><th>Pickup</th><th>Drop</th><th>Rate</th><th>Miles</th><th>RPM</th><th>Status</th></tr></thead>' +
+      '<tbody id="an-load-table"></tbody></table></div>';
+
+    html+='</div>'; /* end tm-an */
 
     wrap.innerHTML=html;
 
-    wrap.querySelectorAll('#an-load-table tr.clickable').forEach(function(r){
-      r.addEventListener('click',function(){
-        var l=S.loads.find(function(x){return x.id===r.getAttribute('data-lid');});
-        if(l) openEditModal(l);
+    /* Populate load table */
+    function populateTable(filter) {
+      var tbody=wrap.querySelector('#an-load-table');
+      if(!tbody) return;
+      var rows=S.loads.slice().sort(function(a,b){return(b.pickupDate||'')<(a.pickupDate||'')?-1:1;});
+      if(filter&&filter!=='all'){
+        if(['Max','Monu','Paul'].indexOf(filter)>-1){
+          rows=rows.filter(function(l){return l.driver===filter;});
+        } else {
+          rows=rows.filter(function(l){return l.status===filter||l.cancelled&&filter==='CANCELLED';});
+        }
+      }
+      tbody.innerHTML='';
+      rows.forEach(function(l){
+        var tr=document.createElement('tr'); tr.className='clickable'; tr.setAttribute('data-lid',l.id);
+        tr.innerHTML='<td class="mono" style="font-size:11px;">'+l.loadNumber+'</td>' +
+          '<td style="font-weight:600;">'+l.driver+'</td>' +
+          '<td style="font-size:11px;">'+(l.pickupCity||'?')+', '+l.pickupState+' → '+(l.dropoffCity||'?')+', '+l.dropoffState+'</td>' +
+          '<td class="mono" style="font-size:11px;">'+(l.pickupDate?l.pickupDate.slice(0,10):'—')+'</td>' +
+          '<td class="mono" style="font-size:11px;">'+(l.dropoffDate?l.dropoffDate.slice(0,10):'—')+'</td>' +
+          '<td class="mono teal">'+money(l.rate)+'</td>' +
+          '<td class="mono">'+(l.miles?fmt(l.miles):'—')+'</td>' +
+          '<td class="mono" style="color:'+(l.rpm?rpmColor(l.rpm):'var(--ink-3)')+';">'+(l.rpm?'$'+l.rpm.toFixed(2):'—')+'</td>' +
+          '<td><span class="tm-badge '+(l.cancelled?'CANCELLED':l.status)+'">'+(l.cancelled?'Cancelled':l.status)+'</span></td>';
+        tr.addEventListener('click',function(){openEditModal(l);});
+        tbody.appendChild(tr);
+      });
+    }
+
+    populateTable('all');
+
+    /* Filter buttons */
+    wrap.querySelectorAll('.an-filter').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        wrap.querySelectorAll('.an-filter').forEach(function(b){b.classList.remove('active');b.style.background='';b.style.borderColor='';});
+        btn.classList.add('active'); btn.style.background='var(--ink)'; btn.style.color='#fff';
+        populateTable(btn.getAttribute('data-filter'));
       });
     });
   }
