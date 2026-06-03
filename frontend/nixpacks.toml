@@ -1,0 +1,5 @@
+[phases.build]
+cmds = ["npm install", "npm run build", "npm install -g serve"]
+
+[start]
+cmd = "serve dist -p $PORT"
