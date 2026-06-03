@@ -70,6 +70,11 @@
     return Promise.all([
       api('/api/drivers').catch(function(){return[];}),
       api('/api/loads?page_size=500').catch(function(){return[];}),
+      // Pre-fetch analytics API data in parallel
+      api('/api/analytics/summary').catch(function(){return null;}),
+      api('/api/analytics/by-driver').catch(function(){return[];}),
+      api('/api/analytics/revenue-by-month').catch(function(){return[];}),
+      api('/api/analytics/recent-loads?limit=30').catch(function(){return[];}),
     ]).then(function(res) {
       S.drivers = (res[0]||[]).filter(function(d){return TRUCK[d.driver_name];});
       S.loads = (res[1]||[]).map(norm).filter(function(l){return TRUCK[l.driver];});
@@ -79,6 +84,13 @@
       S.loads.forEach(function(l){ if(l.pickupDate) months[l.pickupDate.slice(0,7)]=true; });
       var present = Object.keys(months).sort();
       if(present.length) S.activeMonth = present[present.length-1];
+      // Store analytics API data
+      S.analytics = {
+        summary: res[2] || null,
+        byDriver: (res[3]||[]).filter(function(d){return TRUCK[d.driver_name];}),
+        revenueByMonth: res[4] || [],
+        recentLoads: res[5] || [],
+      };
       S.ready = true;
       return S;
     });
@@ -547,153 +559,172 @@
   function renderAnalytics() {
     var wrap=document.querySelector('.scene[data-scene="3"] .an-wrap');
     if(!wrap) return;
-    var drivers=['Max','Monu','Paul'];
-    var active=S.loads.filter(function(l){return!l.cancelled;});
-    var totRev=0,totLoads=active.length,rpmSum=0,rpmN=0,totMiles=0,bestRpm=0,bestRpmDriver='';
-    active.forEach(function(l){ totRev+=l.rate; totMiles+=l.miles; if(l.rpm){rpmSum+=l.rpm;rpmN++;} });
-    var avgRpm=rpmN?rpmSum/rpmN:0;
 
-    /* per-driver stats for sparklines */
-    var driverData={};
-    drivers.forEach(function(d){
-      var dl=S.byDriver[d]||[]; var dr=0,dn=0,drs=0,drn=0,dmi=0,dld=0;
-      dl.filter(function(l){return!l.cancelled;}).forEach(function(l){ dr+=l.rate;dn++;dmi+=l.miles;if(l.rpm){drs+=l.rpm;drn++;} });
-      ['2026-02','2026-03','2026-04','2026-05'].forEach(function(m){ dld+=driverStats(d,m).loadedDays; });
-      var drpm=drn?drs/drn:0;
-      if(drpm>bestRpm){bestRpm=drpm;bestRpmDriver=d;}
-      driverData[d]={rev:dr,loads:dn,miles:dmi,rpm:drpm,loadedDays:dld};
-    });
+    /* ── Use real analytics API data from S.analytics (fetched in loadData) ── */
+    var an = S.analytics || {};
+    var sum = an.summary || {};
+    var byDriverAPI = an.byDriver || [];
+    var revByMonthAPI = an.revenueByMonth || [];
+    var recentAPI = an.recentLoads || [];
 
-    var months=['2026-02','2026-03','2026-04','2026-05'];
-    /* per-month revenue split by driver */
-    var revByMonth=months.map(function(m){
-      var tot=0; active.forEach(function(l){ if(l.pickupDate&&l.pickupDate.slice(0,7)===m) tot+=l.rate; }); return tot;
-    });
-    var revByMonthDriver={};
+    var drivers = ['Max','Monu','Paul'];
+    var DCOLORS = {Max:'var(--teal)', Monu:'#3B82F6', Paul:'var(--amber)'};
+
+    /* Lookup map for driver stats from API */
+    var driverMap = {};
+    byDriverAPI.forEach(function(d){ driverMap[d.driver_name] = d; });
+
+    /* Best RPM driver from API */
+    var bestRpmDriver = '', bestRpm = 0;
+    byDriverAPI.forEach(function(d){ if(d.avg_rpm && d.avg_rpm > bestRpm){ bestRpm=d.avg_rpm; bestRpmDriver=d.driver_name; } });
+
+    /* Revenue by month from API */
+    var maxRev = Math.max.apply(null, revByMonthAPI.map(function(r){return r.revenue||0;}).concat([1]));
+
+    /* Per-driver per-month revenue (computed from loads for stacked bars) */
+    var revByMonthDriver = {};
     drivers.forEach(function(d){
-      revByMonthDriver[d]=months.map(function(m){
-        var r=0; (S.byDriver[d]||[]).filter(function(l){return!l.cancelled;}).forEach(function(l){
-          if(l.pickupDate&&l.pickupDate.slice(0,7)===m) r+=l.rate;
-        }); return r;
+      revByMonthDriver[d] = revByMonthAPI.map(function(m){
+        var r = 0;
+        (S.byDriver[d]||[]).forEach(function(l){
+          if(l.pickupDate && parseInt(l.pickupDate.slice(5,7))===m.month && parseInt(l.pickupDate.slice(0,4))===m.year) r+=l.rate;
+        });
+        return r;
       });
     });
-    var maxM=Math.max.apply(null,revByMonth.concat([1]));
-    var maxDM=Math.max.apply(null,[].concat.apply([],drivers.map(function(d){ return revByMonthDriver[d]||[0]; })).concat([1]));
 
-    /* RPM by driver by month */
-    var rpmByMonthDriver={};
+    /* RPM by driver × month (computed from loads) */
+    var rpmGrid = {};
     drivers.forEach(function(d){
-      rpmByMonthDriver[d]=months.map(function(m){
-        var rs=0,rn=0; (S.byDriver[d]||[]).filter(function(l){return!l.cancelled&&l.pickupDate&&l.pickupDate.slice(0,7)===m&&l.rpm;}).forEach(function(l){rs+=l.rpm;rn++;});
+      rpmGrid[d] = revByMonthAPI.map(function(m){
+        var rs=0,rn=0;
+        (S.byDriver[d]||[]).filter(function(l){
+          return l.rpm && l.pickupDate && parseInt(l.pickupDate.slice(5,7))===m.month && parseInt(l.pickupDate.slice(0,4))===m.year;
+        }).forEach(function(l){rs+=l.rpm;rn++;});
         return rn?rs/rn:0;
       });
     });
 
-    var DCOLORS={Max:'var(--teal)',Monu:'#3B82F6',Paul:'var(--amber)'};
+    var html = '<div class="tm-an">';
 
-    var html='<div class="tm-an">';
+    /* ── KPI row from real /api/analytics/summary ── */
+    html += '<div class="tm-kpis">';
+    html += kpi('Total revenue', money(sum.total_revenue||0), 'from '+fmt(sum.loads_count||0)+' loads · Feb–May 2026');
+    html += kpi('Avg RPM', sum.avg_rpm ? '$'+Number(sum.avg_rpm).toFixed(2) : '—', 'fleet-wide rate per loaded mile');
+    html += kpi('Loaded miles', fmt(sum.total_loaded_miles||0), 'across all confirmed loads');
+    html += kpi('Best RPM driver', bestRpmDriver || '—', bestRpm ? '$'+bestRpm.toFixed(2)+'/mi avg' : 'calculating…');
+    html += '</div>';
 
-    /* KPIs */
-    html+='<div class="tm-kpis">';
-    html+=kpi('Total revenue',money(totRev),'Feb – May 2026 · active loads');
-    html+=kpi('Active loads',String(totLoads),'across Max · Monu · Paul');
-    html+=kpi('Avg RPM','$'+avgRpm.toFixed(2),'fleet-wide · loaded miles');
-    html+=kpi('Best RPM driver',bestRpmDriver,'$'+bestRpm.toFixed(2)+'/mi this period');
-    html+='</div>';
-
-    /* Driver scorecards */
-    html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">';
+    /* ── Driver scorecards from /api/analytics/by-driver ── */
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">';
     drivers.forEach(function(d){
-      var dd=driverData[d];
-      var prev=revByMonthDriver[d]; var lastTwo=[prev[2]||0,prev[3]||0]; var trend=lastTwo[1]>lastTwo[0]?'↑':'↓';
-      var trendColor=lastTwo[1]>lastTwo[0]?'var(--teal-deep)':'var(--red)';
-      html+='<div class="tm-panel" style="cursor:default;">' +
+      var dd = driverMap[d] || {loads:0,revenue:0,avg_rpm:null,utilization:null};
+      /* Apr vs May trend from loads */
+      var aprRev = 0, mayRev = 0;
+      (S.byDriver[d]||[]).forEach(function(l){
+        if(!l.pickupDate) return;
+        var m = l.pickupDate.slice(5,7);
+        if(m==='04') aprRev += l.rate;
+        if(m==='05') mayRev += l.rate;
+      });
+      var trend = mayRev >= aprRev ? '↑' : '↓';
+      var trendColor = mayRev >= aprRev ? 'var(--teal-deep)' : 'var(--red)';
+
+      /* Loaded days from local schedule model */
+      var loadedDays = 0;
+      ['2026-02','2026-03','2026-04','2026-05'].forEach(function(m){ loadedDays += driverStats(d,m).loadedDays; });
+
+      html += '<div class="tm-panel">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
           '<strong style="font-size:13px;">'+d+'</strong>' +
           '<span style="font-size:11px;font-weight:600;color:'+DCOLORS[d]+'">Truck #'+TRUCK[d]+'</span>' +
         '</div>' +
-        '<div style="font-size:22px;font-weight:700;color:var(--ink);margin-bottom:2px;">'+money(dd.rev)+'</div>' +
-        '<div style="font-size:11px;color:var(--ink-3);">'+dd.loads+' loads · '+dd.loadedDays+' loaded days</div>' +
+        '<div style="font-size:22px;font-weight:700;color:var(--ink);margin-bottom:2px;">'+money(dd.revenue)+'</div>' +
+        '<div style="font-size:11px;color:var(--ink-3);">'+dd.loads+' loads · '+loadedDays+' loaded days</div>' +
         '<div style="display:flex;gap:14px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line-2);">' +
           '<div><div style="font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;">RPM</div>' +
-            '<div style="font-size:14px;font-weight:600;color:var(--ink);">$'+dd.rpm.toFixed(2)+'</div></div>' +
-          '<div><div style="font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;">Miles</div>' +
-            '<div style="font-size:14px;font-weight:600;color:var(--ink);">'+fmt(Math.round(dd.miles))+'</div></div>' +
+            '<div style="font-size:14px;font-weight:600;color:var(--ink);">'+(dd.avg_rpm?'$'+Number(dd.avg_rpm).toFixed(2):'—')+'</div></div>' +
+          '<div><div style="font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;">Util</div>' +
+            '<div style="font-size:14px;font-weight:600;color:var(--ink);">'+(dd.utilization?dd.utilization+'%':'—')+'</div></div>' +
           '<div><div style="font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;">Trend</div>' +
             '<div style="font-size:14px;font-weight:600;color:'+trendColor+';">'+trend+' Apr→May</div></div>' +
         '</div>' +
-      '</div>';
+        '</div>';
     });
-    html+='</div>';
+    html += '</div>';
 
-    html+='<div class="tm-an-grid">';
+    html += '<div class="tm-an-grid">';
 
-    /* Revenue by month stacked bars */
-    html+='<div class="tm-panel"><h4>Revenue by month · by driver</h4>';
-    months.forEach(function(m,i){
-      html+='<div style="margin-bottom:9px;">' +
+    /* ── Revenue by month from /api/analytics/revenue-by-month ── */
+    html += '<div class="tm-panel"><h4>Revenue by month · by driver</h4>';
+    revByMonthAPI.forEach(function(m,i){
+      html += '<div style="margin-bottom:9px;">' +
         '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-2);margin-bottom:3px;">' +
-          '<span>'+MON[m].slice(0,3)+'</span><span>'+money(revByMonth[i])+'</span></div>' +
+          '<span>'+m.month_label+' '+m.year+'</span>' +
+          '<span>'+money(m.revenue)+' · '+m.loads+' loads</span>' +
+        '</div>' +
         '<div style="height:14px;background:var(--line-2);border-radius:4px;overflow:hidden;display:flex;">';
       drivers.forEach(function(d){
-        var w=maxM?Math.round((revByMonthDriver[d][i]||0)/maxM*100):0;
-        html+='<div style="width:'+w+'%;background:'+DCOLORS[d]+';opacity:.85;" title="'+d+': '+money(revByMonthDriver[d][i]||0)+'"></div>';
+        var dRev = revByMonthDriver[d][i] || 0;
+        var w = maxRev ? Math.round(dRev/maxRev*100) : 0;
+        html += '<div style="width:'+w+'%;background:'+DCOLORS[d]+';opacity:.85;" title="'+d+': '+money(dRev)+'"></div>';
       });
-      html+='</div></div>';
+      html += '</div></div>';
     });
-    html+='<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--ink-3);">';
-    drivers.forEach(function(d){ html+='<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+DCOLORS[d]+';margin-right:4px;"></span>'+d+'</span>'; });
-    html+='</div></div>';
+    html += '<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--ink-3);">';
+    drivers.forEach(function(d){ html += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+DCOLORS[d]+';margin-right:4px;vertical-align:middle;"></span>'+d+'</span>'; });
+    html += '</div></div>';
 
-    /* RPM by driver by month */
-    html+='<div class="tm-panel"><h4>RPM by driver · by month</h4>';
-    html+='<table class="tm-tbl"><thead><tr><th>Month</th>';
-    drivers.forEach(function(d){ html+='<th>'+d+'</th>'; });
-    html+='</tr></thead><tbody>';
-    months.forEach(function(m,i){
-      html+='<tr><td style="font-size:11px;color:var(--ink-2)">'+MON[m]+'</td>';
+    /* ── RPM matrix ── */
+    html += '<div class="tm-panel"><h4>RPM by driver × month</h4>';
+    html += '<table class="tm-tbl"><thead><tr><th>Month</th>';
+    drivers.forEach(function(d){ html += '<th>'+d+'</th>'; });
+    html += '</tr></thead><tbody>';
+    revByMonthAPI.forEach(function(m,i){
+      html += '<tr><td style="font-size:11px;color:var(--ink-2);">'+m.month_label+'</td>';
       drivers.forEach(function(d){
-        var r=rpmByMonthDriver[d][i];
-        html+='<td class="mono" style="color:'+rpmColor(r)+';">'+(r?'$'+r.toFixed(2):'—')+'</td>';
+        var r = rpmGrid[d][i];
+        html += '<td class="mono" style="color:'+rpmColor(r)+';">'+(r?'$'+r.toFixed(2):'—')+'</td>';
       });
-      html+='</tr>';
+      html += '</tr>';
     });
-    html+='</tbody></table></div></div>';
+    html += '</tbody></table></div></div>';
 
-    /* Full load table */
-    html+='<div class="tm-panel" style="margin-top:14px;">' +
+    /* ── Full load detail table (filterable) ── */
+    html += '<div class="tm-panel" style="margin-top:14px;">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
-        '<h4 style="margin:0;">Load detail · all '+S.loads.length+' loads (click any row to edit)</h4>' +
-        '<div style="display:flex;gap:6px;" id="an-filter-btns">' +
+        '<h4 style="margin:0;">Load detail · '+S.loads.length+' loads · click any row to edit</h4>' +
+        '<div style="display:flex;gap:6px;">' +
           '<button class="tm-btn ghost tm-btn-sm an-filter active" data-filter="all">All</button>' +
           drivers.map(function(d){ return '<button class="tm-btn ghost tm-btn-sm an-filter" data-filter="'+d+'">'+d+'</button>'; }).join('') +
           '<button class="tm-btn ghost tm-btn-sm an-filter" data-filter="COMPLETED">Completed</button>' +
           '<button class="tm-btn ghost tm-btn-sm an-filter" data-filter="CANCELLED">Cancelled</button>' +
         '</div>' +
       '</div>' +
-      '<table class="tm-tbl"><thead><tr><th>Load #</th><th>Driver</th><th>Lane</th><th>Pickup</th><th>Drop</th><th>Rate</th><th>Miles</th><th>RPM</th><th>Status</th></tr></thead>' +
-      '<tbody id="an-load-table"></tbody></table></div>';
+      '<table class="tm-tbl">' +
+        '<thead><tr><th>Load #</th><th>Driver</th><th>Lane</th><th>Pickup</th><th>Drop</th><th>Rate</th><th>Miles</th><th>RPM</th><th>Status</th></tr></thead>' +
+        '<tbody id="an-load-table"></tbody>' +
+      '</table></div>';
 
-    html+='</div>'; /* end tm-an */
+    html += '</div>';
+    wrap.innerHTML = html;
 
-    wrap.innerHTML=html;
-
-    /* Populate load table */
+    /* populate table */
     function populateTable(filter) {
-      var tbody=wrap.querySelector('#an-load-table');
-      if(!tbody) return;
-      var rows=S.loads.slice().sort(function(a,b){return(b.pickupDate||'')<(a.pickupDate||'')?-1:1;});
-      if(filter&&filter!=='all'){
-        if(['Max','Monu','Paul'].indexOf(filter)>-1){
-          rows=rows.filter(function(l){return l.driver===filter;});
-        } else {
-          rows=rows.filter(function(l){return l.status===filter||l.cancelled&&filter==='CANCELLED';});
-        }
+      var tbody = wrap.querySelector('#an-load-table'); if(!tbody) return;
+      var rows = S.loads.slice().sort(function(a,b){return(b.pickupDate||'')<(a.pickupDate||'')?-1:1;});
+      if(filter && filter!=='all'){
+        rows = rows.filter(function(l){
+          if(filter==='CANCELLED') return l.cancelled;
+          if(filter==='COMPLETED') return l.status==='COMPLETED' && !l.cancelled;
+          return l.driver === filter;
+        });
       }
-      tbody.innerHTML='';
+      tbody.innerHTML = '';
       rows.forEach(function(l){
-        var tr=document.createElement('tr'); tr.className='clickable'; tr.setAttribute('data-lid',l.id);
-        tr.innerHTML='<td class="mono" style="font-size:11px;">'+l.loadNumber+'</td>' +
+        var tr = document.createElement('tr'); tr.className = 'clickable'; tr.setAttribute('data-lid', l.id);
+        tr.innerHTML =
+          '<td class="mono" style="font-size:11px;">'+l.loadNumber+'</td>' +
           '<td style="font-weight:600;">'+l.driver+'</td>' +
           '<td style="font-size:11px;">'+(l.pickupCity||'?')+', '+l.pickupState+' → '+(l.dropoffCity||'?')+', '+l.dropoffState+'</td>' +
           '<td class="mono" style="font-size:11px;">'+(l.pickupDate?l.pickupDate.slice(0,10):'—')+'</td>' +
@@ -702,19 +733,17 @@
           '<td class="mono">'+(l.miles?fmt(l.miles):'—')+'</td>' +
           '<td class="mono" style="color:'+(l.rpm?rpmColor(l.rpm):'var(--ink-3)')+';">'+(l.rpm?'$'+l.rpm.toFixed(2):'—')+'</td>' +
           '<td><span class="tm-badge '+(l.cancelled?'CANCELLED':l.status)+'">'+(l.cancelled?'Cancelled':l.status)+'</span></td>';
-        tr.addEventListener('click',function(){openEditModal(l);});
+        tr.addEventListener('click', function(){ openEditModal(l); });
         tbody.appendChild(tr);
       });
     }
 
     populateTable('all');
 
-    /* Filter buttons */
     wrap.querySelectorAll('.an-filter').forEach(function(btn){
-      btn.addEventListener('click',function(){
+      btn.addEventListener('click', function(){
         wrap.querySelectorAll('.an-filter').forEach(function(b){
-          b.classList.remove('active');
-          b.style.background=''; b.style.color=''; b.style.borderColor='';
+          b.classList.remove('active'); b.style.background=''; b.style.color=''; b.style.borderColor='';
         });
         btn.classList.add('active');
         btn.style.background='var(--ink)'; btn.style.color='#fff'; btn.style.borderColor='var(--ink)';
