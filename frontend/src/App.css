@@ -1,9 +1,50 @@
+:root {
+  --bg: #F4F2EE;
+  --surface: #FFFFFF;
+  --surface-alt: #F8F6F2;
+  --ink: #0E1115;
+  --ink-2: #3F4750;
+  --ink-3: #6B7480;
+  --ink-4: #9AA3AE;
+  --line: #E6E2DA;
+  --line-2: #EFECE5;
+  --teal: #0E8378;
+  --teal-soft: #DCEFEC;
+  --teal-deep: #0B6A61;
+  --red: #C2453E;
+  --red-soft: #FBE7E5;
+  --amber: #C58A1F;
+  --amber-soft: #F8EFD9;
+  --shadow-sm: 0 1px 2px rgba(14,17,21,0.04), 0 1px 1px rgba(14,17,21,0.03);
+  --shadow-md: 0 4px 14px rgba(14,17,21,0.06), 0 1px 3px rgba(14,17,21,0.04);
+  --shadow-lg: 0 18px 40px -12px rgba(14,17,21,0.14), 0 4px 12px rgba(14,17,21,0.06);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+  min-height: 100vh;
+}
+
 #root {
   max-width: 100%;
   margin: 0;
   padding: 0;
   text-align: left;
   overflow-x: hidden;
+  background: var(--bg);
+  min-height: 100vh;
 }
 
 body {

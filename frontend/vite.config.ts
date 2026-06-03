@@ -24,7 +24,7 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: process.env.API_TARGET || 'http://localhost:3000',
+        target: process.env.API_TARGET || 'https://truemile-v2-demo-dev.up.railway.app',
         changeOrigin: true
       }
     }

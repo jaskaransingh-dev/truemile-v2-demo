@@ -432,7 +432,7 @@ export default function LoadOptimizer() {
           Mileage Deficit: {tripAnalysis.deficit.miles} miles behind in {tripAnalysis.deficit.days} day(s)
         </div>
         <div style={{ fontSize: '12px', color: '#7f1d1d' }}>
-          Expected {tripAnalysis.targets.dailyMilesTarget}/day × {tripAnalysis.deficit.days} days = {tripAnalysis.targets.dailyMilesTarget * tripAnalysis.deficit.days} miles, but only did {currentCandidate.miles}
+          Expected {tripAnalysis.targets.dailyMilesTarget}/day × {tripAnalysis.deficit.days} days = {tripAnalysis.targets.dailyMilesTarget * tripAnalysis.deficit.days} miles, but only did {currentCandidate!.miles}
         </div>
       </div>
     )}
@@ -474,7 +474,7 @@ export default function LoadOptimizer() {
             <div>
               <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>Miles</div>
               <div style={{ fontSize: '20px', fontWeight: '600', color: '#111827' }}>
-                {currentCandidate.miles?.toLocaleString() || 'N/A'}
+                {currentCandidate!.miles?.toLocaleString() || 'N/A'}
               </div>
             </div>
             <div>
