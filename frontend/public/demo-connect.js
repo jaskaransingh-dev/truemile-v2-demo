@@ -24,6 +24,7 @@
   var DAYS = { '2026-02':28,'2026-03':31,'2026-04':30,'2026-05':31,'2026-06':30 };
   var MON  = { '2026-02':'February','2026-03':'March','2026-04':'April','2026-05':'May','2026-06':'June' };
   var TRUCK = { Max:'106', Monu:'109', Paul:'107' };
+  var DRIVER_HOME = { Max:'Dallas, TX', Monu:'Dallas, TX', Paul:'Dallas, TX' };
 
   var S = {                          // global state
     drivers:[], loads:[], byDriver:{},
@@ -178,6 +179,8 @@
       '.tm-day.gap{background:repeating-linear-gradient(45deg,#fff,#fff 4px,#feeeed 4px,#feeeed 8px);cursor:pointer;}',
       '.tm-day.gap:hover{outline:2px solid rgba(194,69,62,.35);outline-offset:-2px;}',
       '.tm-day.gap .dot{width:5px;height:5px;border-radius:50%;background:var(--red);margin:3px auto 0;}',
+      '.tm-day.gap.home-need{background:repeating-linear-gradient(45deg,#fff,#fff 4px,#FFF3CD 4px,#FFF3CD 8px);}',
+      '.tm-day.gap.home-need .dot{background:var(--amber);}',
       '.tm-day.cancelled{background:var(--surface-alt);opacity:.55;}',
       /* Legend */
       '.tm-leg{display:flex;gap:14px;padding-bottom:2px;font-size:11px;color:var(--ink-3);}',
@@ -478,6 +481,7 @@
     html+='<div class="tm-cal">';
     drivers.forEach(function(d){
       var dm=dayMap(d,month), sc=S.scenarios[d];
+      var homeCity = DRIVER_HOME[d] || 'home base';
       html+='<div class="tm-row"><div class="tm-rh"><div class="dn">'+d+'</div><div class="dt">Truck #'+TRUCK[d]+'</div>';
       if(sc&&sc.type==='down') html+='<div class="flag down">Truck down</div>';
       if(sc&&sc.type==='home') html+='<div class="flag home">Home by '+sc.by+'</div>';
@@ -487,10 +491,13 @@
         if(cell.state==='load'){
           var l=cell.load;
           var tip='#'+l.loadNumber+' · '+l.pickupCity+', '+l.pickupState+' → '+l.dropoffCity+', '+l.dropoffState+
-            ' · $'+l.rate.toLocaleString()+(l.miles?' · '+l.miles+'mi':'')+(l.rpm?' · $'+l.rpm.toFixed(2)+'/mi':'')+' · '+l.trailerType;
+            ' · $'+l.rate.toLocaleString()+(l.miles?' · '+l.miles+' mi':'')+(l.rpm?' · $'+l.rpm.toFixed(2)+'/mi':'')+' · '+l.trailerType+
+            '\nClick → broker email  ·  Long-press → edit load';
           html+='<div class="tm-day load" title="'+tip.replace(/"/g,'&quot;')+'" data-lid="'+l.id+'"><div class="dn">'+day+'</div><div class="dot"></div></div>';
         } else if(cell.state==='gap'){
-          html+='<div class="tm-day gap" title="Empty — click to find a load" data-book="'+d+'"><div class="dn">'+day+'</div><div class="dot"></div></div>';
+          // Show home-by note on first empty day after scenario
+          var homeNote = (sc&&sc.type==='home') ? 'Need load → '+homeCity+' by '+sc.by : 'Empty — click to find a load';
+          html+='<div class="tm-day gap'+(sc&&sc.type==='home'?' home-need':'')+'" title="'+homeNote+'" data-book="'+d+'"><div class="dn">'+day+'</div><div class="dot"></div></div>';
         } else {
           html+='<div class="tm-day"><div class="dn">'+day+'</div></div>';
         }
@@ -705,8 +712,12 @@
     /* Filter buttons */
     wrap.querySelectorAll('.an-filter').forEach(function(btn){
       btn.addEventListener('click',function(){
-        wrap.querySelectorAll('.an-filter').forEach(function(b){b.classList.remove('active');b.style.background='';b.style.borderColor='';});
-        btn.classList.add('active'); btn.style.background='var(--ink)'; btn.style.color='#fff';
+        wrap.querySelectorAll('.an-filter').forEach(function(b){
+          b.classList.remove('active');
+          b.style.background=''; b.style.color=''; b.style.borderColor='';
+        });
+        btn.classList.add('active');
+        btn.style.background='var(--ink)'; btn.style.color='#fff'; btn.style.borderColor='var(--ink)';
         populateTable(btn.getAttribute('data-filter'));
       });
     });
