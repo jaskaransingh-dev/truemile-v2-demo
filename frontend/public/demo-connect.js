@@ -19,7 +19,8 @@
 (function () {
   'use strict';
 
-  var API = 'https://truemile-v2-demo-dev.up.railway.app';
+  // API base URL — replaced at build time by vite.config.ts from .env VITE_BASE_BE_URL
+  var API = '%%VITE_BASE_BE_URL%%';
   var DAYS = { '2026-02':28,'2026-03':31,'2026-04':30,'2026-05':31,'2026-06':30 };
   var MON  = { '2026-02':'February','2026-03':'March','2026-04':'April','2026-05':'May','2026-06':'June' };
   var TRUCK = { Max:'106', Monu:'109', Paul:'107' };

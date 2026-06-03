@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var API = 'https://truemile-v2-demo-dev.up.railway.app';
+  var API = '%%VITE_BASE_BE_URL%%';
 
   /* ── tooltip engine ───────────────────────────────────────────────────── */
 
