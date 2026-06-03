@@ -134,8 +134,38 @@ async def import_from_local(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("", response_model=list[LoadOut])
-async def list_loads(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Load).order_by(Load.created_at.desc()))
+async def list_loads(
+    # Filters
+    driver_id: uuid.UUID | None = None,
+    driver_name: str | None = None,
+    month: int | None = None,   # 1-12
+    year: int | None = None,    # e.g. 2026
+    trailer_type: str | None = None,
+    # Pagination
+    page: int = 1,
+    page_size: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Load)
+
+    if driver_id:
+        query = query.where(Load.driver_id == driver_id)
+    if driver_name:
+        query = query.where(func.lower(Load.driver_name) == driver_name.lower())
+    if trailer_type:
+        query = query.where(func.lower(Load.trailer_type) == trailer_type.lower())
+    if month:
+        query = query.where(func.extract("month", Load.pickup_date) == month)
+    if year:
+        query = query.where(func.extract("year", Load.pickup_date) == year)
+
+    query = (
+        query.order_by(Load.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    result = await db.execute(query)
     return result.scalars().all()
 
 
