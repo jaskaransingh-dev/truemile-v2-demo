@@ -1,562 +1,866 @@
 /* ============================================================================
- * demo-connect.js — wires the Golden Mile demo UI to the live TrueMile v2 API.
- * Renders into .wp-main (plan schedule), .an-wrap (analytics).
- * Preserves all demo.html interactions: agent feed, Find & Fill, data sources.
+ * demo-connect.js — TrueMile V2 · Tier 0 API connector
+ *
+ * Endpoints used (all live on Railway):
+ *   GET    /api/drivers
+ *   GET    /api/loads          ?driver_name, month, year, page_size
+ *   GET    /api/loads/{id}
+ *   PATCH  /api/loads/{id}     driver_name, rate, loaded_miles, deadhead_miles,
+ *                               trailer_type, status, cancelled, cancellation_reason
+ *   POST   /api/loads/parse-ratecon   (file upload)
+ *   POST   /api/loads/import-drive   (Google Drive folders)
+ *   GET    /api/demo/ratecon/latest  (Chrome extension)
+ *
+ * Renders into:
+ *   .wp-main          — Plan schedule calendar (preserves .wp-side agent panel)
+ *   .an-wrap          — Analytics scene
+ *   #rc-table-body    — Rate Confirmations table in the data-sources modal
  * ========================================================================== */
 (function () {
   'use strict';
 
   var API = 'https://truemile-v2-demo-dev.up.railway.app';
-  var DAYS_IN_MONTH = { '2026-02': 28, '2026-03': 31, '2026-04': 30, '2026-05': 31, '2026-06': 30 };
-  var MONTH_LABEL = { '2026-02': 'February', '2026-03': 'March', '2026-04': 'April', '2026-05': 'May', '2026-06': 'June' };
-  var DRIVER_TRUCK = { Max: '106', Monu: '109', Paul: '107' };
+  var DAYS = { '2026-02':28,'2026-03':31,'2026-04':30,'2026-05':31,'2026-06':30 };
+  var MON  = { '2026-02':'February','2026-03':'March','2026-04':'April','2026-05':'May','2026-06':'June' };
+  var TRUCK = { Max:'106', Monu:'109', Paul:'107' };
 
-  var state = {
-    drivers: [], loads: [], byDriver: {},
-    activeMonth: '2026-05', scenarios: {}, ready: false,
+  var S = {                          // global state
+    drivers:[], loads:[], byDriver:{},
+    activeMonth:'2026-05', scenarios:{}, ready:false,
   };
 
-  /* ── data ─────────────────────────────────────────────────────────────── */
+  /* ─── helpers ────────────────────────────────────────────────────────── */
+
+  function api(path, opts) {
+    return fetch(API + path, opts || {}).then(function(r){
+      if (!r.ok) return r.json().then(function(e){ throw new Error(e.detail || 'HTTP '+r.status); });
+      return r.json();
+    });
+  }
 
   function norm(l) {
     return {
-      id: l.id, driver: l.driver_name || 'Unassigned',
-      loadNumber: l.load_number || '—',
-      pickupCity: l.pickup_city || '', pickupState: l.pickup_state || '',
-      pickupDate: l.pickup_date || null,
-      dropoffCity: l.dropoff_city || '', dropoffState: l.dropoff_state || '',
-      dropoffDate: l.dropoff_date || null,
-      rate: Number(l.rate || 0), miles: Number(l.loaded_miles || 0),
-      rpm: l.rpm != null ? Number(l.rpm) : (l.loaded_miles ? Number(l.rate || 0) / Number(l.loaded_miles) : 0),
-      brokerName: l.broker_name || '', brokerEmail: l.broker_email || '', brokerPhone: l.broker_phone || '',
+      id:l.id, driver:l.driver_name||'Unassigned', loadNumber:l.load_number||'—',
+      pickupCity:l.pickup_city||'', pickupState:l.pickup_state||'',
+      pickupDate:l.pickup_date||null,
+      dropoffCity:l.dropoff_city||'', dropoffState:l.dropoff_state||'',
+      dropoffDate:l.dropoff_date||null,
+      rate:Number(l.rate||0), miles:Number(l.loaded_miles||0),
+      deadheadMiles:Number(l.deadhead_miles||0),
+      rpm:l.rpm!=null?Number(l.rpm):(l.loaded_miles?Number(l.rate||0)/Number(l.loaded_miles):0),
+      trailerType:l.trailer_type||'',
+      status:l.status||'PENDING', cancelled:!!l.cancelled,
+      cancellationReason:l.cancellation_reason||'',
+      brokerName:l.broker_name||'', brokerEmail:l.broker_email||'',
+      brokerPhone:l.broker_phone||'', brokerAgentName:l.broker_agent_name||'',
+      stopCount:l.stop_count||0, stops:l.stops||[],
+      source:l.source||'', createdAt:l.created_at||'',
     };
   }
 
+  function fmt(n) { return Number(n).toLocaleString(); }
+  function money(n) { return '$'+Number(n).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0}); }
+  function rpmColor(r) { return r>=2.5?'var(--teal-deep)':r>=2.0?'var(--amber)':'var(--red)'; }
+
+  /* ─── data loading ───────────────────────────────────────────────────── */
+
   function loadData() {
     return Promise.all([
-      fetch(API + '/api/drivers').then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }),
-      fetch(API + '/api/loads?page_size=500').then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }),
-    ]).then(function (res) {
-      state.drivers = (res[0] || []).filter(function (d) { return DRIVER_TRUCK[d.driver_name]; });
-      state.loads = (res[1] || []).map(norm).filter(function (l) { return DRIVER_TRUCK[l.driver]; });
-      state.byDriver = { Max: [], Monu: [], Paul: [] };
-      state.loads.forEach(function (l) { if (state.byDriver[l.driver]) state.byDriver[l.driver].push(l); });
+      api('/api/drivers').catch(function(){return[];}),
+      api('/api/loads?page_size=500').catch(function(){return[];}),
+    ]).then(function(res) {
+      S.drivers = (res[0]||[]).filter(function(d){return TRUCK[d.driver_name];});
+      S.loads = (res[1]||[]).map(norm).filter(function(l){return TRUCK[l.driver];});
+      S.byDriver = {Max:[],Monu:[],Paul:[]};
+      S.loads.forEach(function(l){ if(S.byDriver[l.driver]) S.byDriver[l.driver].push(l); });
       var months = {};
-      state.loads.forEach(function (l) { if (l.pickupDate) months[l.pickupDate.slice(0, 7)] = true; });
+      S.loads.forEach(function(l){ if(l.pickupDate) months[l.pickupDate.slice(0,7)]=true; });
       var present = Object.keys(months).sort();
-      if (present.length) state.activeMonth = present[present.length - 1];
-      state.ready = true;
+      if(present.length) S.activeMonth = present[present.length-1];
+      S.ready = true;
+      return S;
     });
   }
 
-  /* ── schedule model ───────────────────────────────────────────────────── */
+  /* reload one load from API and update S.loads */
+  function reloadLoad(id) {
+    return api('/api/loads/'+id).then(function(raw){
+      var updated = norm(raw);
+      for(var i=0;i<S.loads.length;i++){
+        if(S.loads[i].id===id){ S.loads[i]=updated; break; }
+      }
+      // rebuild byDriver
+      S.byDriver = {Max:[],Monu:[],Paul:[]};
+      S.loads.forEach(function(l){ if(S.byDriver[l.driver]) S.byDriver[l.driver].push(l); });
+      return updated;
+    });
+  }
+
+  /* ─── schedule model ─────────────────────────────────────────────────── */
 
   function loadsForDriverMonth(driver, month) {
-    return (state.byDriver[driver] || []).filter(function (l) {
-      return l.pickupDate && l.pickupDate.slice(0, 7) === month;
-    }).sort(function (a, b) { return a.pickupDate < b.pickupDate ? -1 : 1; });
+    return (S.byDriver[driver]||[]).filter(function(l){
+      return l.pickupDate && l.pickupDate.slice(0,7)===month && !l.cancelled;
+    }).sort(function(a,b){ return a.pickupDate<b.pickupDate?-1:1; });
   }
 
   function dayMap(driver, month) {
-    var n = DAYS_IN_MONTH[month] || 30;
-    var days = []; for (var i = 0; i < n; i++) days.push({ state: 'off', load: null });
+    var n = DAYS[month]||30;
+    var days = []; for(var i=0;i<n;i++) days.push({state:'off',load:null});
     var loads = loadsForDriverMonth(driver, month);
-    var firstDay = null, lastDay = null;
-    loads.forEach(function (l) {
-      var p = new Date(l.pickupDate);
-      var d = l.dropoffDate ? new Date(l.dropoffDate) : p;
-      var mo = parseInt(month.slice(5)) - 1;
-      var s = p.getUTCMonth() === mo ? p.getUTCDate() : 1;
-      var e = d.getUTCMonth() === mo ? d.getUTCDate() : n;
-      for (var day = s; day <= e && day <= n; day++) {
-        if (!days[day - 1].load) days[day - 1] = { state: 'load', load: l };
-      }
-      if (firstDay === null || s < firstDay) firstDay = s;
-      if (lastDay === null || e > lastDay) lastDay = e;
+    var first=null,last=null;
+    loads.forEach(function(l){
+      var p=new Date(l.pickupDate), d=l.dropoffDate?new Date(l.dropoffDate):p;
+      var mo=parseInt(month.slice(5))-1;
+      var s=p.getUTCMonth()===mo?p.getUTCDate():1;
+      var e=d.getUTCMonth()===mo?d.getUTCDate():n;
+      for(var day=s;day<=e&&day<=n;day++) if(!days[day-1].load) days[day-1]={state:'load',load:l};
+      if(first===null||s<first) first=s;
+      if(last===null||e>last) last=e;
     });
-    if (firstDay !== null) {
-      for (var k = firstDay; k <= lastDay; k++) {
-        if (days[k - 1].state === 'off') days[k - 1] = { state: 'gap', load: null };
-      }
-      for (var t = lastDay + 1; t <= n; t++) days[t - 1] = { state: 'gap', load: null };
+    if(first!==null){
+      for(var k=first;k<=last;k++) if(days[k-1].state==='off') days[k-1]={state:'gap',load:null};
+      for(var t=last+1;t<=n;t++) days[t-1]={state:'gap',load:null};
     }
     return days;
   }
 
   function driverStats(driver, month) {
-    var loads = loadsForDriverMonth(driver, month);
-    var rev = 0, miles = 0, rpmSum = 0, rpmN = 0;
-    loads.forEach(function (l) { rev += l.rate; miles += l.miles; if (l.rpm) { rpmSum += l.rpm; rpmN++; } });
-    var dm = dayMap(driver, month);
-    var loaded = dm.filter(function (d) { return d.state === 'load'; }).length;
-    var gaps = dm.filter(function (d) { return d.state === 'gap'; }).length;
-    return { loads: loads.length, revenue: rev, miles: miles, rpm: rpmN ? rpmSum / rpmN : 0, loadedDays: loaded, gapDays: gaps };
+    var loads=loadsForDriverMonth(driver,month), rev=0,mi=0,rs=0,rn=0;
+    loads.forEach(function(l){ rev+=l.rate; mi+=l.miles; if(l.rpm){rs+=l.rpm;rn++;} });
+    var dm=dayMap(driver,month);
+    var loaded=dm.filter(function(d){return d.state==='load';}).length;
+    var gaps=dm.filter(function(d){return d.state==='gap';}).length;
+    return {loads:loads.length,revenue:rev,miles:mi,rpm:rn?rs/rn:0,loadedDays:loaded,gapDays:gaps};
   }
 
-  /* ── shared styles ───────────────────────────────────────────────────── */
+  /* ─── styles ─────────────────────────────────────────────────────────── */
 
   function injectStyles() {
-    if (document.getElementById('tm-connect-styles')) return;
-    var css = document.createElement('style');
-    css.id = 'tm-connect-styles';
-    css.textContent = [
-      /* Board layout */
-      '.tm-board{padding:18px 22px 0;font-family:Inter,system-ui,sans-serif;}',
-      '.tm-board-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:16px;flex-wrap:wrap;}',
-      '.tm-board-title{font-size:14px;font-weight:600;color:var(--ink);}',
-      '.tm-board-title .sub{font-size:11px;color:var(--ink-3);font-weight:400;margin-left:8px;}',
-      /* Month tabs — match demo pill style */
-      '.tm-month{display:flex;gap:3px;background:var(--surface-alt);padding:3px;border-radius:8px;border:1px solid var(--line-2);}',
-      '.tm-month button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:500;color:var(--ink-3);padding:5px 12px;border-radius:6px;cursor:pointer;transition:all .15s;}',
-      '.tm-month button:hover{color:var(--ink);}',
-      '.tm-month button.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm);}',
+    if(document.getElementById('tm-styles')) return;
+    var s=document.createElement('style'); s.id='tm-styles';
+    s.textContent = [
+      /* Board */
+      '.tm-board{padding:16px 20px 0;font-family:Inter,system-ui,sans-serif;}',
+      '.tm-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;gap:12px;flex-wrap:wrap;}',
+      '.tm-head-title{font-size:14px;font-weight:600;color:var(--ink);}',
+      '.tm-head-sub{font-size:11px;color:var(--ink-3);font-weight:400;margin-left:6px;}',
+      /* Month tabs */
+      '.tm-months{display:flex;gap:2px;background:var(--surface-alt);padding:3px;border-radius:8px;border:1px solid var(--line-2);}',
+      '.tm-months button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:500;color:var(--ink-3);padding:4px 11px;border-radius:6px;cursor:pointer;transition:all .15s;}',
+      '.tm-months button:hover{color:var(--ink);}',
+      '.tm-months button.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm);}',
       /* Urgent banner */
-      '.tm-urgent{margin:0 0 12px;padding:10px 14px;border-radius:8px;background:var(--red-soft);border:1px solid rgba(194,69,62,.18);font-size:12.5px;color:var(--red);display:flex;gap:8px;align-items:flex-start;line-height:1.4;}',
+      '.tm-urgent{margin:0 0 11px;padding:9px 13px;border-radius:8px;background:var(--red-soft);border:1px solid rgba(194,69,62,.18);font-size:12.5px;color:var(--red);display:flex;gap:7px;align-items:flex-start;line-height:1.4;}',
       '.tm-urgent.ok{background:var(--teal-soft);border-color:rgba(14,131,120,.18);color:var(--teal-deep);}',
       '.tm-urgent .u-dot{flex-shrink:0;width:7px;height:7px;border-radius:50%;background:currentColor;margin-top:4px;}',
+      '.tm-urgent a{color:inherit;text-decoration:underline;cursor:pointer;}',
       /* Calendar */
-      '.tm-cal{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);margin-bottom:12px;}',
-      '.tm-row{display:grid;grid-template-columns:148px 1fr;border-bottom:1px solid var(--line-2);}',
+      '.tm-cal{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);margin-bottom:11px;}',
+      '.tm-row{display:grid;grid-template-columns:144px 1fr;border-bottom:1px solid var(--line-2);}',
       '.tm-row:last-child{border-bottom:0;}',
-      '.tm-row-head{padding:10px 14px;border-right:1px solid var(--line-2);background:var(--surface-alt);}',
-      '.tm-row-head .dn{font-weight:600;font-size:13px;color:var(--ink);margin-bottom:2px;}',
-      '.tm-row-head .dt{font-size:11px;color:var(--ink-3);font-family:"JetBrains Mono",monospace;}',
-      '.tm-row-head .flag{margin-top:6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;display:inline-block;padding:2px 8px;border-radius:4px;}',
-      '.tm-row-head .flag.down{background:var(--red);color:#fff;}',
-      '.tm-row-head .flag.home{background:var(--amber-soft);color:var(--amber);border:1px solid rgba(197,138,31,.3);}',
-      /* Day cells */
+      '.tm-rh{padding:10px 13px;border-right:1px solid var(--line-2);background:var(--surface-alt);}',
+      '.tm-rh .dn{font-weight:600;font-size:13px;color:var(--ink);margin-bottom:2px;}',
+      '.tm-rh .dt{font-size:11px;color:var(--ink-3);font-family:"JetBrains Mono",monospace;}',
+      '.tm-rh .flag{margin-top:5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;display:inline-block;padding:2px 7px;border-radius:4px;}',
+      '.tm-rh .flag.down{background:var(--red);color:#fff;}',
+      '.tm-rh .flag.home{background:var(--amber-soft);color:var(--amber);border:1px solid rgba(197,138,31,.25);}',
+      /* Days */
       '.tm-days{display:flex;overflow-x:auto;scrollbar-width:none;}',
       '.tm-days::-webkit-scrollbar{display:none;}',
-      '.tm-day{flex:0 0 28px;min-height:58px;border-right:1px solid var(--line-2);padding:3px 2px;position:relative;transition:background .12s;}',
+      '.tm-day{flex:0 0 27px;min-height:56px;border-right:1px solid var(--line-2);padding:3px 1px;position:relative;}',
       '.tm-day:last-child{border-right:0;}',
-      '.tm-day .dnum{font-size:8.5px;color:var(--ink-4);font-family:"JetBrains Mono",monospace;text-align:center;line-height:1;}',
-      '.tm-day.load{background:var(--teal-soft);cursor:pointer;}',
-      '.tm-day.load:hover{background:#c4e4df;}',
-      '.tm-day.load .dot{width:5px;height:5px;border-radius:50%;background:var(--teal);margin:4px auto 0;}',
+      '.tm-day .dn{font-size:8px;color:var(--ink-4);font-family:"JetBrains Mono",monospace;text-align:center;}',
+      '.tm-day.load{background:var(--teal-soft);cursor:pointer;transition:background .12s;}',
+      '.tm-day.load:hover{background:#c2e2dd;}',
+      '.tm-day.load .dot{width:5px;height:5px;border-radius:50%;background:var(--teal);margin:3px auto 0;}',
       '.tm-day.gap{background:repeating-linear-gradient(45deg,#fff,#fff 4px,#feeeed 4px,#feeeed 8px);cursor:pointer;}',
-      '.tm-day.gap:hover{outline:2px solid rgba(194,69,62,.4);outline-offset:-2px;}',
-      '.tm-day.gap .dot{width:5px;height:5px;border-radius:50%;background:var(--red);margin:4px auto 0;}',
+      '.tm-day.gap:hover{outline:2px solid rgba(194,69,62,.35);outline-offset:-2px;}',
+      '.tm-day.gap .dot{width:5px;height:5px;border-radius:50%;background:var(--red);margin:3px auto 0;}',
+      '.tm-day.cancelled{background:var(--surface-alt);opacity:.55;}',
       /* Legend */
-      '.tm-legend{display:flex;gap:16px;padding:0 2px 2px;font-size:11px;color:var(--ink-3);}',
-      '.tm-legend span{display:flex;align-items:center;gap:5px;}',
-      '.tm-legend i{width:9px;height:9px;border-radius:2px;display:inline-block;flex-shrink:0;}',
-      '.tm-legend .l-load i{background:var(--teal-soft);border:1px solid rgba(14,131,120,.3);}',
-      '.tm-legend .l-gap i{background:repeating-linear-gradient(45deg,#fff,#fff 3px,#feeeed 3px,#feeeed 6px);border:1px solid rgba(194,69,62,.25);}',
-      '.tm-legend .l-off i{background:#fff;border:1px solid var(--line);}',
+      '.tm-leg{display:flex;gap:14px;padding-bottom:2px;font-size:11px;color:var(--ink-3);}',
+      '.tm-leg span{display:flex;align-items:center;gap:5px;}',
+      '.tm-leg i{width:9px;height:9px;border-radius:2px;flex-shrink:0;}',
+      '.tm-leg .l-l i{background:var(--teal-soft);border:1px solid rgba(14,131,120,.3);}',
+      '.tm-leg .l-g i{background:repeating-linear-gradient(45deg,#fff,#fff 3px,#feeeed 3px,#feeeed 6px);border:1px solid rgba(194,69,62,.25);}',
+      '.tm-leg .l-o i{background:#fff;border:1px solid var(--line);}',
       /* Analytics */
-      '.tm-an{padding:18px 22px;}',
-      '.tm-an-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}',
-      '.tm-kpi{padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);}',
+      '.tm-an{padding:16px 20px;}',
+      '.tm-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}',
+      '.tm-kpi{padding:14px 15px;border:1px solid var(--line);border-radius:10px;background:var(--surface);}',
       '.tm-kpi .l{font-size:10px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}',
       '.tm-kpi .v{font-size:22px;font-weight:700;color:var(--ink);margin-top:5px;line-height:1.1;}',
       '.tm-kpi .d{font-size:11px;color:var(--teal-deep);margin-top:3px;font-weight:500;}',
-      '.tm-an-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;}',
+      '.tm-an-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}',
       '.tm-panel{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:14px 16px;}',
-      '.tm-panel h4{margin:0 0 12px;font-size:12px;font-weight:600;color:var(--ink);text-transform:uppercase;letter-spacing:.05em;}',
-      '.tm-bar-row{display:grid;grid-template-columns:52px 1fr 64px;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;}',
+      '.tm-panel h4{margin:0 0 11px;font-size:11px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.06em;}',
+      '.tm-br{display:grid;grid-template-columns:48px 1fr 60px;align-items:center;gap:8px;margin-bottom:7px;font-size:12px;}',
       '.tm-track{height:10px;background:var(--line-2);border-radius:5px;overflow:hidden;}',
-      '.tm-fill{height:100%;background:var(--teal);border-radius:5px;transition:width .4s ease;}',
-      '.tm-bar-val{text-align:right;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--ink);}',
+      '.tm-fill{height:100%;background:var(--teal);border-radius:5px;}',
+      '.tm-bv{text-align:right;font-family:"JetBrains Mono",monospace;font-size:11px;}',
+      /* Tables */
       '.tm-tbl{width:100%;border-collapse:collapse;font-size:12px;}',
       '.tm-tbl th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);padding:5px 8px;border-bottom:1px solid var(--line);}',
       '.tm-tbl td{padding:6px 8px;border-bottom:1px solid var(--line-2);color:var(--ink);}',
       '.tm-tbl tr:last-child td{border-bottom:0;}',
       '.tm-tbl .mono{font-family:"JetBrains Mono",monospace;}',
       '.tm-tbl .teal{color:var(--teal-deep);font-weight:600;}',
-      /* Broker modal */
-      '.tm-modal-ov{position:fixed;inset:0;background:rgba(14,17,21,.5);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:9999;animation:fadeIn .2s ease;}',
-      '.tm-modal{background:#fff;border-radius:14px;width:540px;max-width:92vw;max-height:88vh;overflow:auto;box-shadow:0 24px 60px -12px rgba(14,17,21,.22);}',
-      '.tm-modal-h{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}',
-      '.tm-modal-h .t{font-size:14px;font-weight:600;color:var(--ink);}',
-      '.tm-modal-h .x{border:0;background:transparent;font-size:22px;cursor:pointer;color:var(--ink-3);line-height:1;padding:0 4px;}',
-      '.tm-modal-h .x:hover{color:var(--ink);}',
-      '.tm-modal-b{padding:18px 20px;}',
-      '.tm-field{margin-bottom:12px;}',
-      '.tm-field label{display:block;font-size:10px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}',
-      '.tm-field input,.tm-field textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;box-sizing:border-box;color:var(--ink);outline:none;transition:border-color .15s;}',
-      '.tm-field input:focus,.tm-field textarea:focus{border-color:var(--teal);}',
-      '.tm-field textarea{min-height:140px;resize:vertical;font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.55;}',
-      '.tm-modal-f{display:flex;gap:8px;align-items:center;padding:0 20px 18px;}',
+      '.tm-tbl tr.clickable{cursor:pointer;}',
+      '.tm-tbl tr.clickable:hover td{background:var(--surface-alt);}',
+      /* Status badges */
+      '.tm-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}',
+      '.tm-badge.PENDING{background:var(--line-2);color:var(--ink-2);}',
+      '.tm-badge.COMPLETED{background:var(--teal-soft);color:var(--teal-deep);}',
+      '.tm-badge.CANCELLED{background:var(--red-soft);color:var(--red);}',
+      '.tm-badge.IN_TRANSIT{background:#E8F0FF;color:#3B5BDB;}',
+      /* Modal */
+      '.tm-ov{position:fixed;inset:0;background:rgba(14,17,21,.5);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:9999;animation:fadeIn .2s ease;}',
+      '.tm-modal{background:#fff;border-radius:14px;width:580px;max-width:93vw;max-height:90vh;overflow:auto;box-shadow:0 24px 60px -12px rgba(14,17,21,.26);}',
+      '.tm-mh{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}',
+      '.tm-mh .title{font-size:14px;font-weight:600;color:var(--ink);}',
+      '.tm-mh .sub{font-size:11px;color:var(--ink-3);margin-top:2px;}',
+      '.tm-mh-x{border:0;background:transparent;font-size:22px;cursor:pointer;color:var(--ink-3);line-height:1;padding:0 4px;transition:color .15s;}',
+      '.tm-mh-x:hover{color:var(--ink);}',
+      '.tm-mb{padding:18px 20px;}',
+      '.tm-mf{display:flex;gap:8px;align-items:center;padding:0 20px 18px;}',
+      /* Form fields */
+      '.tm-field{margin-bottom:13px;}',
+      '.tm-field label{display:block;font-size:10px;color:var(--ink-3);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}',
+      '.tm-field input,.tm-field select,.tm-field textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;box-sizing:border-box;color:var(--ink);outline:none;transition:border-color .15s;background:#fff;}',
+      '.tm-field input:focus,.tm-field select:focus,.tm-field textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(14,131,120,.1);}',
+      '.tm-field textarea{min-height:80px;resize:vertical;}',
+      '.tm-field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}',
+      '.tm-field-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}',
+      /* Buttons */
       '.tm-btn{border:0;border-radius:8px;padding:8px 16px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;}',
-      '.tm-btn.dark{background:var(--ink);color:#fff;}',
+      '.tm-btn.dark{background:var(--ink);color:#fff;flex:1;}',
       '.tm-btn.dark:hover{background:#1e2730;}',
-      '.tm-btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}',
-      '.tm-btn.ghost:hover{background:var(--surface-alt);}',
       '.tm-btn.teal{background:var(--teal);color:#fff;}',
       '.tm-btn.teal:hover{background:var(--teal-deep);}',
-      '.tm-btn.amber{background:var(--amber-soft);color:var(--amber);border:1px solid rgba(197,138,31,.25);}',
-      '.tm-btn.amber:hover{background:#f5e5c0;}',
-      '.tm-pending{font-size:11px;color:var(--ink-3);margin-right:auto;}',
+      '.tm-btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}',
+      '.tm-btn.ghost:hover{background:var(--surface-alt);}',
+      '.tm-btn.red{background:var(--red-soft);color:var(--red);border:1px solid rgba(194,69,62,.2);}',
+      '.tm-btn.red:hover{background:#f8d5d3;}',
+      '.tm-btn:disabled{opacity:.45;cursor:not-allowed;}',
+      '.tm-btn.loading::after{content:" …";}',
+      '.tm-btn-sm{padding:5px 11px;font-size:11px;border-radius:6px;}',
+      '.tm-msg{font-size:11px;color:var(--ink-3);margin-right:auto;}',
+      /* Drive import bar */
+      '.tm-drive-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--surface-alt);border:1px solid var(--line-2);border-radius:8px;font-size:12px;}',
+      '.tm-drive-bar .db-label{color:var(--ink-2);font-weight:500;flex:1;}',
+      /* Toast */
+      '.tm-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;z-index:99999;animation:fadeIn .2s;pointer-events:none;}',
+      '.tm-toast.ok{background:var(--teal);}',
+      '.tm-toast.err{background:var(--red);}',
     ].join('');
-    document.head.appendChild(css);
+    document.head.appendChild(s);
   }
 
-  /* ── render: Plan schedule ──────────────────────────────────────────── */
+  /* ─── toast ──────────────────────────────────────────────────────────── */
+
+  function toast(msg, type) {
+    var t=document.createElement('div');
+    t.className='tm-toast '+(type||'');
+    t.textContent=msg;
+    document.body.appendChild(t);
+    setTimeout(function(){if(t.parentNode)t.remove();},3000);
+  }
+
+  /* ─── close modal helper ─────────────────────────────────────────────── */
+
+  function closeModal(id) {
+    var m=document.getElementById(id||'tm-modal'); if(m) m.remove();
+  }
+
+  function makeModal(id, heading, subtext, content, footer) {
+    closeModal(id);
+    var ov=document.createElement('div'); ov.className='tm-ov'; ov.id=id||'tm-modal';
+    ov.innerHTML='<div class="tm-modal">' +
+      '<div class="tm-mh"><div><div class="title">'+heading+'</div><div class="sub">'+subtext+'</div></div>' +
+      '<button class="tm-mh-x" data-close>×</button></div>' +
+      '<div class="tm-mb">'+content+'</div>' +
+      '<div class="tm-mf">'+footer+'</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(e){ if(e.target===ov||e.target.hasAttribute('data-close')) closeModal(id); });
+    return ov;
+  }
+
+  /* ─── EDIT LOAD MODAL ────────────────────────────────────────────────── */
+
+  function openEditModal(load) {
+    var drivers = ['Max','Monu','Paul'];
+    var statuses = ['PENDING','IN_TRANSIT','COMPLETED','CANCELLED'];
+    var trailers = ['DRY_VAN','REEFER','FLATBED','STEP_DECK','TANKER','LTL','OTHER'];
+
+    var driverOpts = ['<option value="">— Unassigned —</option>'].concat(
+      drivers.map(function(d){ return '<option value="'+d+'"'+(load.driver===d?' selected':'')+'>'+d+' (Truck #'+TRUCK[d]+')</option>'; })
+    ).join('');
+
+    var statusOpts = statuses.map(function(s){
+      return '<option value="'+s+'"'+(load.status===s?' selected':'')+'>'+s+'</option>';
+    }).join('');
+
+    var trailerOpts = ['<option value="">— Select —</option>'].concat(
+      trailers.map(function(t){ return '<option value="'+t+'"'+(load.trailerType===t?' selected':'')+'>'+t.replace('_',' ')+'</option>'; })
+    ).join('');
+
+    var lane = (load.pickupCity||'?')+', '+(load.pickupState||'?')+' → '+(load.dropoffCity||'?')+', '+(load.dropoffState||'?');
+
+    var content =
+      /* Row 1 */
+      '<div class="tm-field-row">' +
+        '<div class="tm-field"><label>Driver</label><select id="ef-driver">'+driverOpts+'</select></div>' +
+        '<div class="tm-field"><label>Trailer type</label><select id="ef-trailer">'+trailerOpts+'</select></div>' +
+      '</div>' +
+      /* Row 2 */
+      '<div class="tm-field-row3">' +
+        '<div class="tm-field"><label>Rate ($)</label><input id="ef-rate" type="number" value="'+load.rate+'"></div>' +
+        '<div class="tm-field"><label>Loaded miles</label><input id="ef-miles" type="number" value="'+(load.miles||'')+'"></div>' +
+        '<div class="tm-field"><label>Deadhead miles</label><input id="ef-dh" type="number" value="'+(load.deadheadMiles||'')+'"></div>' +
+      '</div>' +
+      /* Row 3 */
+      '<div class="tm-field"><label>Status</label><select id="ef-status">'+statusOpts+'</select></div>' +
+      /* Cancelled toggle */
+      '<div id="ef-cancel-wrap" class="tm-field" style="'+(load.status==='CANCELLED'?'':'display:none')+'">' +
+        '<label>Cancellation reason</label>' +
+        '<textarea id="ef-cancel-reason">'+load.cancellationReason+'</textarea>' +
+      '</div>' +
+      /* Info tiles */
+      '<div style="padding:10px 12px;background:var(--surface-alt);border:1px solid var(--line-2);border-radius:8px;font-size:12px;color:var(--ink-3);line-height:1.6;">' +
+        '<div><strong style="color:var(--ink)">Lane:</strong> '+lane+'</div>' +
+        '<div><strong style="color:var(--ink)">Load #:</strong> '+load.loadNumber+'</div>' +
+        '<div><strong style="color:var(--ink)">Broker:</strong> '+(load.brokerName||'—')+(load.brokerEmail?' · '+load.brokerEmail:'')+'</div>' +
+        '<div><strong style="color:var(--ink)">Pickup:</strong> '+(load.pickupDate?load.pickupDate.slice(0,16).replace('T',' '):'—')+'</div>' +
+        '<div><strong style="color:var(--ink)">Delivery:</strong> '+(load.dropoffDate?load.dropoffDate.slice(0,16).replace('T',' '):'—')+'</div>' +
+      '</div>';
+
+    var footer =
+      '<button class="tm-btn red tm-btn-sm" id="ef-cancel-btn">Cancel load</button>' +
+      '<span class="tm-msg" id="ef-msg"></span>' +
+      '<button class="tm-btn ghost" data-close>Discard</button>' +
+      '<button class="tm-btn dark" id="ef-save">Save changes</button>';
+
+    var ov = makeModal('tm-edit-modal', 'Edit load · #'+load.loadNumber, load.driver+' · '+lane, content, footer);
+
+    /* Show/hide cancellation reason */
+    ov.querySelector('#ef-status').addEventListener('change', function(){
+      var wrap = ov.querySelector('#ef-cancel-wrap');
+      wrap.style.display = this.value==='CANCELLED' ? '' : 'none';
+    });
+
+    /* Cancel load shortcut */
+    ov.querySelector('#ef-cancel-btn').addEventListener('click', function(){
+      ov.querySelector('#ef-status').value = 'CANCELLED';
+      ov.querySelector('#ef-cancel-wrap').style.display = '';
+      ov.querySelector('#ef-cancel-reason').focus();
+    });
+
+    /* Save */
+    ov.querySelector('#ef-save').addEventListener('click', function(){
+      var btn = this;
+      var msg = ov.querySelector('#ef-msg');
+      var status = ov.querySelector('#ef-status').value;
+      var payload = {
+        driver_name: ov.querySelector('#ef-driver').value || null,
+        trailer_type: ov.querySelector('#ef-trailer').value || null,
+        rate: parseFloat(ov.querySelector('#ef-rate').value) || null,
+        loaded_miles: parseInt(ov.querySelector('#ef-miles').value) || null,
+        deadhead_miles: parseInt(ov.querySelector('#ef-dh').value) || null,
+        status: status || null,
+        cancelled: status==='CANCELLED',
+        cancellation_reason: status==='CANCELLED' ? (ov.querySelector('#ef-cancel-reason').value||null) : null,
+      };
+      btn.textContent='Saving…'; btn.disabled=true; msg.textContent='';
+      api('/api/loads/'+load.id, {
+        method:'PATCH',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload),
+      }).then(function(){
+        toast('Load #'+load.loadNumber+' updated','ok');
+        closeModal('tm-edit-modal');
+        return reloadLoad(load.id);
+      }).then(function(){
+        renderPlan(); renderAnalytics(); repopulateRCTable();
+      }).catch(function(e){
+        msg.textContent='Error: '+e.message;
+        btn.textContent='Save changes'; btn.disabled=false;
+      });
+    });
+  }
+
+  /* ─── BROKER MODAL ───────────────────────────────────────────────────── */
+
+  function openBrokerModal(load) {
+    var lane=(load.pickupCity||'?')+', '+load.pickupState+' → '+(load.dropoffCity||'?')+', '+load.dropoffState;
+    var pickup=load.pickupDate?new Date(load.pickupDate).toUTCString().slice(0,16):'TBD';
+    var toEmail=load.brokerEmail||'';
+    var subject='Load #'+load.loadNumber+' — '+lane;
+    var body='Hi '+(load.brokerName||'there')+',\n\n'+
+      'Following up on load #'+load.loadNumber+' ('+lane+'), pickup '+pickup+'.\n'+
+      'Royal Carriers has a truck available and can cover this lane.\n'+
+      'Please confirm the rate of $'+load.rate.toLocaleString()+' and send the signed rate confirmation.\n\n'+
+      'Thanks,\nRoyal Carriers Dispatch\n(469) 000-0000';
+
+    var content =
+      '<div class="tm-field-row">' +
+        '<div class="tm-field"><label>To</label><input id="bm-to" value="'+toEmail+'" placeholder="(no email on rate sheet)"></div>' +
+        '<div class="tm-field"><label>Phone</label><input value="'+(load.brokerPhone||'—')+'" readonly></div>' +
+      '</div>' +
+      '<div class="tm-field"><label>Subject</label><input id="bm-subj" value="'+subject+'"></div>' +
+      '<div class="tm-field"><label>Message — drafted from rate sheet</label><textarea id="bm-body">'+body+'</textarea></div>';
+
+    var footer =
+      '<span class="tm-msg">Email endpoint ships with Danish\'s Tier 1</span>' +
+      '<button class="tm-btn ghost" id="bm-copy">Copy</button>' +
+      '<button class="tm-btn ghost" id="bm-mailto">Open in Mail</button>' +
+      '<button class="tm-btn dark" id="bm-send">Send</button>';
+
+    var ov = makeModal('tm-broker-modal','Notify broker · '+(load.brokerName||'Unknown'),
+      'Load #'+load.loadNumber+' · '+lane, content, footer);
+
+    ov.querySelector('#bm-copy').addEventListener('click',function(){
+      try{ navigator.clipboard.writeText(ov.querySelector('#bm-body').value); toast('Copied to clipboard','ok'); }
+      catch(e){ toast('Select and copy manually'); }
+    });
+
+    ov.querySelector('#bm-mailto').addEventListener('click',function(){
+      var to=ov.querySelector('#bm-to').value, subj=ov.querySelector('#bm-subj').value, bod=ov.querySelector('#bm-body').value;
+      window.open('mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(bod));
+    });
+
+    ov.querySelector('#bm-send').addEventListener('click',function(){
+      var btn=this; btn.textContent='Sending…'; btn.disabled=true;
+      var to=ov.querySelector('#bm-to').value, subj=ov.querySelector('#bm-subj').value, bod=ov.querySelector('#bm-body').value;
+      api('/api/email/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,subject:subj,body:bod})})
+        .then(function(){ toast('Sent!','ok'); closeModal('tm-broker-modal'); })
+        .catch(function(){
+          window.open('mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(bod));
+          btn.textContent='Send'; btn.disabled=false;
+        });
+    });
+  }
+
+  /* ─── PLAN SCHEDULE ──────────────────────────────────────────────────── */
 
   function renderPlan() {
     var grid = document.querySelector('.scene[data-scene="1"] .wp-main');
-    if (!grid) return;
-    var month = state.activeMonth;
-    var drivers = ['Max', 'Monu', 'Paul'];
-    var months = Object.keys(DAYS_IN_MONTH).filter(function (m) {
-      return state.loads.some(function (l) { return l.pickupDate && l.pickupDate.slice(0, 7) === m; });
+    if(!grid) return;
+    var month = S.activeMonth;
+    var drivers = ['Max','Monu','Paul'];
+    var months = Object.keys(DAYS).filter(function(m){
+      return S.loads.some(function(l){ return l.pickupDate&&l.pickupDate.slice(0,7)===m; });
     });
 
-    /* Urgent: drivers with ≥3 empty days after their last booked load */
-    var urgent = drivers.filter(function (d) {
-      var dm = dayMap(d, month); var last = -1;
-      for (var i = 0; i < dm.length; i++) if (dm[i].state === 'load') last = i;
-      return last >= 0 && dm.slice(last + 1).filter(function (x) { return x.state === 'gap'; }).length >= 3;
+    var urgent = drivers.filter(function(d){
+      var dm=dayMap(d,month), last=-1;
+      for(var i=0;i<dm.length;i++) if(dm[i].state==='load') last=i;
+      return last>=0 && dm.slice(last+1).filter(function(x){return x.state==='gap';}).length>=3;
     });
 
-    var html = '<div class="tm-board">';
-
-    /* Header + month switcher */
-    html += '<div class="tm-board-head">';
-    html += '<div class="tm-board-title">Royal Carriers <span class="sub">schedule from booked rate confirmations · ' + MONTH_LABEL[month] + '</span></div>';
-    html += '<div class="tm-month">' + months.map(function (m) {
-      return '<button data-m="' + m + '"' + (m === month ? ' class="active"' : '') + '>' + MONTH_LABEL[m].slice(0, 3) + '</button>';
-    }).join('') + '</div></div>';
-
-    /* Urgent banner */
-    if (urgent.length) {
-      html += '<div class="tm-urgent"><div class="u-dot"></div><div><strong>' + urgent.join(', ') +
-        '</strong> ' + (urgent.length > 1 ? 'are' : 'is') + ' running empty — no load booked after their last delivery. ' +
-        '<span style="text-decoration:underline;cursor:pointer;" data-goto-ff>Find a backhaul →</span></div></div>';
-    } else {
-      html += '<div class="tm-urgent ok"><div class="u-dot"></div><span>All drivers covered through their last booked load this month.</span></div>';
-    }
-
-    /* Calendar grid */
-    html += '<div class="tm-cal">';
-    drivers.forEach(function (d) {
-      var dm = dayMap(d, month);
-      var sc = state.scenarios[d];
-      html += '<div class="tm-row"><div class="tm-row-head"><div class="dn">' + d + '</div><div class="dt">Truck #' + DRIVER_TRUCK[d] + '</div>';
-      if (sc && sc.type === 'down') html += '<div class="flag down">Truck down</div>';
-      if (sc && sc.type === 'home') html += '<div class="flag home">Home by ' + sc.by + '</div>';
-      html += '</div><div class="tm-days">';
-      dm.forEach(function (cell, idx) {
-        var day = idx + 1;
-        if (cell.state === 'load') {
-          var l = cell.load;
-          var tip = '#' + l.loadNumber + '  ·  ' + (l.pickupCity || '?') + ', ' + l.pickupState + ' → ' + (l.dropoffCity || '?') + ', ' + l.dropoffState +
-            '  ·  $' + l.rate.toLocaleString() + (l.miles ? '  ·  ' + l.miles + ' mi' : '') + (l.rpm ? '  ·  $' + l.rpm.toFixed(2) + '/mi' : '');
-          html += '<div class="tm-day load" title="' + tip.replace(/"/g, '&quot;') + '" data-load-id="' + l.id + '"><div class="dnum">' + day + '</div><div class="dot"></div></div>';
-        } else if (cell.state === 'gap') {
-          html += '<div class="tm-day gap" title="Empty · click to find a load" data-book-driver="' + d + '"><div class="dnum">' + day + '</div><div class="dot"></div></div>';
-        } else {
-          html += '<div class="tm-day"><div class="dnum">' + day + '</div></div>';
-        }
-      });
-      html += '</div></div>';
-    });
-    html += '</div>';
-
-    /* Legend */
-    html += '<div class="tm-legend">' +
-      '<span class="l-load"><i></i>Booked load</span>' +
-      '<span class="l-gap"><i></i>Empty · needs load</span>' +
-      '<span class="l-off"><i></i>Off / home</span>' +
-      '</div></div>';
-
-    grid.innerHTML = html;
-
-    /* Wire month tabs */
-    grid.querySelectorAll('.tm-month button').forEach(function (b) {
-      b.addEventListener('click', function () { state.activeMonth = b.getAttribute('data-m'); renderPlan(); });
-    });
-
-    /* Wire booked-load cells → broker modal */
-    grid.querySelectorAll('.tm-day.load').forEach(function (c) {
-      c.addEventListener('click', function () {
-        var l = state.loads.find(function (x) { return x.id === c.getAttribute('data-load-id'); });
-        if (l) openBrokerModal(l);
-      });
-    });
-
-    /* Wire empty cells → jump to Find & Fill */
-    grid.querySelectorAll('.tm-day.gap').forEach(function (c) {
-      c.addEventListener('click', function () { gotoScene(2); });
-    });
-
-    /* Wire urgent "Find a backhaul" link */
-    var ff = grid.querySelector('[data-goto-ff]');
-    if (ff) ff.addEventListener('click', function () { gotoScene(2); });
-  }
-
-  function gotoScene(n) {
-    var btn = document.querySelector('.scene-btn[data-scene="' + n + '"]');
-    if (btn) btn.click();
-  }
-
-  /* ── render: Analytics ──────────────────────────────────────────────── */
-
-  function renderAnalytics() {
-    var wrap = document.querySelector('.scene[data-scene="3"] .an-wrap');
-    if (!wrap) return;
-    var drivers = ['Max', 'Monu', 'Paul'];
-    var totRev = 0, totLoads = state.loads.length, rpmSum = 0, rpmN = 0, totMiles = 0;
-    state.loads.forEach(function (l) { totRev += l.rate; totMiles += l.miles; if (l.rpm) { rpmSum += l.rpm; rpmN++; } });
-    var avgRpm = rpmN ? rpmSum / rpmN : 0;
-
-    var months = ['2026-02', '2026-03', '2026-04', '2026-05'];
-    var revByMonth = months.map(function (m) {
-      var r = 0; state.loads.forEach(function (l) { if (l.pickupDate && l.pickupDate.slice(0, 7) === m) r += l.rate; }); return r;
-    });
-    var maxMonth = Math.max.apply(null, revByMonth.concat([1]));
-
-    var html = '<div class="tm-an">';
-    html += '<div class="tm-an-kpis">';
-    html += kpi('Total revenue', '$' + fmt(totRev), 'Feb – May 2026 · booked');
-    html += kpi('Loads delivered', String(totLoads), 'Max · Monu · Paul');
-    html += kpi('Avg RPM', '$' + avgRpm.toFixed(2), 'rate per loaded mile');
-    html += kpi('Loaded miles', fmt(Math.round(totMiles)), 'where reported');
-    html += '</div>';
-
-    html += '<div class="tm-an-cols">';
-    /* Revenue by month */
-    html += '<div class="tm-panel"><h4>Revenue by month</h4>';
-    months.forEach(function (m, i) {
-      html += '<div class="tm-bar-row"><span style="font-size:11px;color:var(--ink-2);">' + MONTH_LABEL[m].slice(0, 3) + '</span>' +
-        '<div class="tm-track"><div class="tm-fill" style="width:' + Math.round(revByMonth[i] / maxMonth * 100) + '%"></div></div>' +
-        '<div class="tm-bar-val">$' + fmt(Math.round(revByMonth[i])) + '</div></div>';
-    });
-    html += '</div>';
-
-    /* By driver */
-    html += '<div class="tm-panel"><h4>By driver · all months</h4>';
-    html += '<table class="tm-tbl"><thead><tr><th>Driver</th><th>Loads</th><th>Revenue</th><th>Avg RPM</th><th>Loaded days</th></tr></thead><tbody>';
-    drivers.forEach(function (d) {
-      var rev = 0, n = 0, rs = 0, rn = 0, loadedDays = 0;
-      (state.byDriver[d] || []).forEach(function (l) { rev += l.rate; n++; if (l.rpm) { rs += l.rpm; rn++; } });
-      months.forEach(function (m) { loadedDays += driverStats(d, m).loadedDays; });
-      html += '<tr><td><strong>' + d + '</strong></td><td class="mono">' + n + '</td><td class="mono teal">$' +
-        fmt(Math.round(rev)) + '</td><td class="mono">' + (rn ? '$' + (rs / rn).toFixed(2) : '—') +
-        '</td><td class="mono">' + loadedDays + 'd</td></tr>';
-    });
-    html += '</tbody></table></div></div>';
-
-    /* Load-level table */
-    html += '<div class="tm-panel" style="margin-top:14px;"><h4>Load detail · most recent 15</h4>';
-    html += '<table class="tm-tbl"><thead><tr><th>Load #</th><th>Driver</th><th>Lane</th><th>Pickup</th><th>Rate</th><th>RPM</th><th>Broker</th></tr></thead><tbody>';
-    state.loads.slice().sort(function (a, b) { return (b.pickupDate || '') < (a.pickupDate || '') ? -1 : 1; }).slice(0, 15).forEach(function (l) {
-      html += '<tr><td class="mono">' + l.loadNumber + '</td><td>' + l.driver + '</td>' +
-        '<td style="font-size:11px;">' + (l.pickupCity || '?') + ', ' + l.pickupState + ' → ' + (l.dropoffCity || '?') + ', ' + l.dropoffState + '</td>' +
-        '<td class="mono" style="font-size:11px;">' + (l.pickupDate ? l.pickupDate.slice(0, 10) : '—') + '</td>' +
-        '<td class="mono teal">$' + l.rate.toLocaleString() + '</td>' +
-        '<td class="mono">' + (l.rpm ? '$' + l.rpm.toFixed(2) : '—') + '</td>' +
-        '<td style="font-size:11px;">' + (l.brokerName || '—') + '</td></tr>';
-    });
-    html += '</tbody></table></div></div>';
-    wrap.innerHTML = html;
-  }
-
-  function kpi(l, v, d) {
-    return '<div class="tm-kpi"><div class="l">' + l + '</div><div class="v">' + v + '</div><div class="d">' + d + '</div></div>';
-  }
-  function fmt(n) { return Number(n).toLocaleString(); }
-
-  /* ── broker pre-draft modal ─────────────────────────────────────────── */
-
-  function openBrokerModal(l) {
-    closeModal();
-    var lane = (l.pickupCity || '?') + ', ' + l.pickupState + ' → ' + (l.dropoffCity || '?') + ', ' + l.dropoffState;
-    var pickup = l.pickupDate ? new Date(l.pickupDate).toUTCString().slice(0, 16) : 'TBD';
-    var toEmail = l.brokerEmail || '';
-    var subject = 'Load #' + l.loadNumber + ' — ' + lane;
-    var body = 'Hi ' + (l.brokerName || 'there') + ',\n\n' +
-      'Following up on load #' + l.loadNumber + ' (' + lane + '), pickup ' + pickup + '.\n' +
-      'Royal Carriers has a truck available and can cover this lane. Please confirm the rate of $' +
-      l.rate.toLocaleString() + ' and send the signed rate confirmation.\n\n' +
-      'Thanks,\nRoyal Carriers Dispatch\n(469) 000-0000';
-
-    var ov = document.createElement('div');
-    ov.className = 'tm-modal-ov'; ov.id = 'tm-modal';
-    ov.innerHTML =
-      '<div class="tm-modal">' +
-        '<div class="tm-modal-h">' +
-          '<div class="t">Notify broker · ' + (l.brokerName || 'Unknown') + '</div>' +
-          '<button class="x" data-close>×</button>' +
-        '</div>' +
-        '<div class="tm-modal-b">' +
-          '<div class="tm-field"><label>To</label>' +
-            '<input id="tm-to" value="' + toEmail + '" placeholder="(no email on rate sheet)"></div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
-            '<div class="tm-field"><label>Broker phone</label>' +
-              '<input value="' + (l.brokerPhone || '—') + '"></div>' +
-            '<div class="tm-field"><label>Load #</label>' +
-              '<input value="' + l.loadNumber + '" readonly></div>' +
-          '</div>' +
-          '<div class="tm-field"><label>Subject</label><input id="tm-subj" value="' + subject + '"></div>' +
-          '<div class="tm-field"><label>Message — auto-drafted from rate sheet</label>' +
-            '<textarea id="tm-body">' + body + '</textarea></div>' +
-        '</div>' +
-        '<div class="tm-modal-f">' +
-          '<span class="tm-pending">Email send live when Danish\'s endpoint ships</span>' +
-          '<button class="tm-btn ghost" data-copy>Copy draft</button>' +
-          '<button class="tm-btn amber" data-mailto>Open in Mail</button>' +
-          '<button class="tm-btn dark" data-send>Send email</button>' +
-        '</div>' +
+    var html = '<div class="tm-board">' +
+      '<div class="tm-head">' +
+        '<div class="tm-head-title">Royal Carriers <span class="tm-head-sub">schedule from rate confirmations · '+MON[month]+'</span></div>' +
+        '<div class="tm-months">'+months.map(function(m){
+          return '<button data-m="'+m+'"'+(m===month?' class="active"':'')+'>'+MON[m].slice(0,3)+'</button>';
+        }).join('')+'</div>' +
       '</div>';
 
-    document.body.appendChild(ov);
+    if(urgent.length){
+      html+='<div class="tm-urgent"><div class="u-dot"></div><div><strong>'+urgent.join(', ')+
+        '</strong> running empty after their last load. <a data-goto-ff>Find a backhaul →</a></div></div>';
+    } else {
+      html+='<div class="tm-urgent ok"><div class="u-dot"></div><span>All drivers covered through their last booked load.</span></div>';
+    }
 
-    /* Close */
-    ov.addEventListener('click', function (e) {
-      if (e.target === ov || e.target.hasAttribute('data-close')) closeModal();
+    html+='<div class="tm-cal">';
+    drivers.forEach(function(d){
+      var dm=dayMap(d,month), sc=S.scenarios[d];
+      html+='<div class="tm-row"><div class="tm-rh"><div class="dn">'+d+'</div><div class="dt">Truck #'+TRUCK[d]+'</div>';
+      if(sc&&sc.type==='down') html+='<div class="flag down">Truck down</div>';
+      if(sc&&sc.type==='home') html+='<div class="flag home">Home by '+sc.by+'</div>';
+      html+='</div><div class="tm-days">';
+      dm.forEach(function(cell,idx){
+        var day=idx+1;
+        if(cell.state==='load'){
+          var l=cell.load;
+          var tip='#'+l.loadNumber+' · '+l.pickupCity+', '+l.pickupState+' → '+l.dropoffCity+', '+l.dropoffState+
+            ' · $'+l.rate.toLocaleString()+(l.miles?' · '+l.miles+'mi':'')+(l.rpm?' · $'+l.rpm.toFixed(2)+'/mi':'')+' · '+l.trailerType;
+          html+='<div class="tm-day load" title="'+tip.replace(/"/g,'&quot;')+'" data-lid="'+l.id+'"><div class="dn">'+day+'</div><div class="dot"></div></div>';
+        } else if(cell.state==='gap'){
+          html+='<div class="tm-day gap" title="Empty — click to find a load" data-book="'+d+'"><div class="dn">'+day+'</div><div class="dot"></div></div>';
+        } else {
+          html+='<div class="tm-day"><div class="dn">'+day+'</div></div>';
+        }
+      });
+      html+='</div></div>';
+    });
+    html+='</div>';
+
+    html+='<div class="tm-leg">'+
+      '<span class="l-l"><i></i>Booked load (click → broker email or edit)</span>'+
+      '<span class="l-g"><i></i>Empty · needs load</span>'+
+      '<span class="l-o"><i></i>Off / home</span>'+
+      '</div></div>';
+
+    grid.innerHTML=html;
+
+    /* Wire month tabs */
+    grid.querySelectorAll('.tm-months button').forEach(function(b){
+      b.addEventListener('click',function(){ S.activeMonth=b.getAttribute('data-m'); renderPlan(); });
     });
 
-    /* Copy draft */
-    ov.querySelector('[data-copy]').addEventListener('click', function () {
-      var b = document.getElementById('tm-body');
-      try { navigator.clipboard.writeText(b ? b.value : body); this.textContent = 'Copied ✓'; }
-      catch (e2) { this.textContent = 'Select and copy'; }
+    /* Teal day → broker modal OR long-press → edit modal */
+    var pressTimer;
+    grid.querySelectorAll('.tm-day.load').forEach(function(c){
+      c.addEventListener('mousedown',function(){
+        pressTimer=setTimeout(function(){ openEditModal(S.loads.find(function(x){return x.id===c.getAttribute('data-lid');})||{}); },600);
+      });
+      c.addEventListener('mouseup',function(){ clearTimeout(pressTimer); });
+      c.addEventListener('click',function(){
+        clearTimeout(pressTimer);
+        var l=S.loads.find(function(x){return x.id===c.getAttribute('data-lid');});
+        if(l) openBrokerModal(l);
+      });
     });
 
-    /* Open in Mail (mailto: fallback — fully functional now) */
-    ov.querySelector('[data-mailto]').addEventListener('click', function () {
-      var to = (document.getElementById('tm-to') || {}).value || toEmail;
-      var subj = (document.getElementById('tm-subj') || {}).value || subject;
-      var bod = (document.getElementById('tm-body') || {}).value || body;
-      window.open('mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(bod));
+    /* Gap → Find & Fill */
+    grid.querySelectorAll('.tm-day.gap').forEach(function(c){
+      c.addEventListener('click',function(){ var b=document.querySelector('.scene-btn[data-scene="2"]'); if(b) b.click(); });
     });
 
-    /* Send email — POST to API when endpoint exists, otherwise mailto */
-    ov.querySelector('[data-send]').addEventListener('click', function () {
-      var to = (document.getElementById('tm-to') || {}).value || toEmail;
-      var subj = (document.getElementById('tm-subj') || {}).value || subject;
-      var bod = (document.getElementById('tm-body') || {}).value || body;
-      var btn = this;
-      btn.textContent = 'Sending…'; btn.disabled = true;
-      fetch(API + '/api/email/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: to, subject: subj, body: bod }),
-      }).then(function (r) {
-        if (r.ok) { btn.textContent = 'Sent ✓'; btn.className = 'tm-btn teal'; closeModal(); }
-        else { throw new Error('HTTP ' + r.status); }
-      }).catch(function () {
-        /* Fallback: open mailto when endpoint not yet live */
-        window.open('mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(bod));
-        btn.textContent = 'Send email'; btn.disabled = false;
+    var ffLink=grid.querySelector('[data-goto-ff]');
+    if(ffLink) ffLink.addEventListener('click',function(){ var b=document.querySelector('.scene-btn[data-scene="2"]'); if(b) b.click(); });
+  }
+
+  /* ─── ANALYTICS ──────────────────────────────────────────────────────── */
+
+  function renderAnalytics() {
+    var wrap=document.querySelector('.scene[data-scene="3"] .an-wrap');
+    if(!wrap) return;
+    var drivers=['Max','Monu','Paul'];
+    var totRev=0,totLoads=S.loads.filter(function(l){return!l.cancelled;}).length,rpmSum=0,rpmN=0,totMiles=0;
+    S.loads.filter(function(l){return!l.cancelled;}).forEach(function(l){
+      totRev+=l.rate; totMiles+=l.miles; if(l.rpm){rpmSum+=l.rpm;rpmN++;}
+    });
+    var avgRpm=rpmN?rpmSum/rpmN:0;
+
+    var months=['2026-02','2026-03','2026-04','2026-05'];
+    var revByMonth=months.map(function(m){
+      var r=0; S.loads.filter(function(l){return!l.cancelled;}).forEach(function(l){
+        if(l.pickupDate&&l.pickupDate.slice(0,7)===m) r+=l.rate;
+      }); return r;
+    });
+    var maxM=Math.max.apply(null,revByMonth.concat([1]));
+
+    var html='<div class="tm-an">';
+    html+='<div class="tm-kpis">';
+    html+=kpi('Total revenue',money(totRev),'Feb–May 2026 · active loads');
+    html+=kpi('Active loads',String(totLoads),'Max · Monu · Paul');
+    html+=kpi('Avg RPM','$'+avgRpm.toFixed(2),'rate per loaded mile');
+    html+=kpi('Loaded miles',fmt(Math.round(totMiles)),'where reported');
+    html+='</div>';
+
+    html+='<div class="tm-an-grid">';
+    /* Rev by month */
+    html+='<div class="tm-panel"><h4>Revenue by month</h4>';
+    months.forEach(function(m,i){
+      html+='<div class="tm-br"><span style="font-size:11px;color:var(--ink-2)">'+MON[m].slice(0,3)+'</span>'+
+        '<div class="tm-track"><div class="tm-fill" style="width:'+Math.round(revByMonth[i]/maxM*100)+'%"></div></div>'+
+        '<div class="tm-bv">'+money(revByMonth[i])+'</div></div>';
+    });
+    html+='</div>';
+
+    /* Driver table */
+    html+='<div class="tm-panel"><h4>By driver · all months</h4>';
+    html+='<table class="tm-tbl"><thead><tr><th>Driver</th><th>Loads</th><th>Revenue</th><th>RPM</th><th>Util days</th></tr></thead><tbody>';
+    drivers.forEach(function(d){
+      var rev=0,n=0,rs=0,rn=0,ld=0;
+      (S.byDriver[d]||[]).filter(function(l){return!l.cancelled;}).forEach(function(l){
+        rev+=l.rate;n++;if(l.rpm){rs+=l.rpm;rn++;}
+      });
+      months.forEach(function(m){ ld+=driverStats(d,m).loadedDays; });
+      html+='<tr><td><strong>'+d+'</strong></td><td class="mono">'+n+'</td><td class="mono teal">'+money(rev)+'</td>'+
+        '<td class="mono">'+(rn?'$'+(rs/rn).toFixed(2):'—')+'</td><td class="mono">'+ld+'d</td></tr>';
+    });
+    html+='</tbody></table></div></div>';
+
+    /* Load detail table */
+    html+='<div class="tm-panel" style="margin-top:14px;"><h4>Load detail — most recent 20 (click to edit)</h4>';
+    html+='<table class="tm-tbl"><thead><tr><th>Load #</th><th>Driver</th><th>Lane</th><th>Pickup</th><th>Rate</th><th>RPM</th><th>Status</th></tr></thead><tbody id="an-load-table">';
+    var recent=S.loads.slice().sort(function(a,b){return(b.pickupDate||'')<(a.pickupDate||'')?-1:1;}).slice(0,20);
+    recent.forEach(function(l){
+      html+='<tr class="clickable" data-lid="'+l.id+'">'+
+        '<td class="mono">'+l.loadNumber+'</td>'+
+        '<td>'+l.driver+'</td>'+
+        '<td style="font-size:11px;">'+(l.pickupCity||'?')+', '+l.pickupState+' → '+(l.dropoffCity||'?')+', '+l.dropoffState+'</td>'+
+        '<td class="mono" style="font-size:11px;">'+(l.pickupDate?l.pickupDate.slice(0,10):'—')+'</td>'+
+        '<td class="mono teal">'+money(l.rate)+'</td>'+
+        '<td class="mono">'+(l.rpm?'$'+l.rpm.toFixed(2):'—')+'</td>'+
+        '<td><span class="tm-badge '+l.status+'">'+l.status+'</span></td>'+
+        '</tr>';
+    });
+    html+='</tbody></table></div></div>';
+
+    wrap.innerHTML=html;
+
+    wrap.querySelectorAll('#an-load-table tr.clickable').forEach(function(r){
+      r.addEventListener('click',function(){
+        var l=S.loads.find(function(x){return x.id===r.getAttribute('data-lid');});
+        if(l) openEditModal(l);
       });
     });
   }
 
-  function closeModal() { var m = document.getElementById('tm-modal'); if (m) m.remove(); }
+  function kpi(l,v,d){
+    return '<div class="tm-kpi"><div class="l">'+l+'</div><div class="v">'+v+'</div><div class="d">'+d+'</div></div>';
+  }
 
-  /* ── agent scenarios ────────────────────────────────────────────────── */
+  /* ─── RATE CONFIRMATIONS TABLE ───────────────────────────────────────── */
+
+  function repopulateRCTable() {
+    var tbody=document.getElementById('rc-table-body');
+    if(!tbody) return;
+    tbody.innerHTML='';
+    var badge=document.getElementById('ds-rc-badge');
+    var meta=document.getElementById('rc-meta-text');
+
+    S.loads.slice().sort(function(a,b){ return(b.pickupDate||'')<(a.pickupDate||'')?-1:1; }).forEach(function(l){
+      var tr=document.createElement('tr'); tr.className='clickable'; tr.setAttribute('data-lid',l.id);
+      tr.style.cursor='pointer';
+      var rpm=l.rpm?'$'+l.rpm.toFixed(2):'—';
+      var rpmStyle='color:'+(l.rpm?rpmColor(l.rpm):'var(--ink-3)');
+      tr.innerHTML='<td class="mono">'+l.loadNumber+'</td>'+
+        '<td>'+l.driver+'</td>'+
+        '<td style="font-size:11px;">'+(l.pickupCity||'?')+', '+l.pickupState+' → '+(l.dropoffCity||'?')+', '+l.dropoffState+'</td>'+
+        '<td class="muted" style="font-size:11px;">'+(l.pickupDate?l.pickupDate.slice(0,10):'—')+'</td>'+
+        '<td class="mono" style="font-weight:600;">$'+l.rate.toLocaleString()+'</td>'+
+        '<td class="mono">'+(l.miles?l.miles.toLocaleString():'—')+'</td>'+
+        '<td class="mono" style="font-weight:600;'+rpmStyle+'">'+rpm+'</td>'+
+        '<td><span class="tm-badge '+(l.cancelled?'CANCELLED':l.status)+'">'+
+          (l.cancelled?'Cancelled':l.status.charAt(0)+l.status.slice(1).toLowerCase())+'</span></td>'+
+        '<td><button class="tm-btn ghost tm-btn-sm" data-edit="'+l.id+'">Edit</button></td>';
+      tbody.appendChild(tr);
+    });
+
+    /* Wire edit buttons */
+    tbody.querySelectorAll('[data-edit]').forEach(function(btn){
+      btn.addEventListener('click',function(e){
+        e.stopPropagation();
+        var l=S.loads.find(function(x){return x.id===btn.getAttribute('data-edit');});
+        if(l) openEditModal(l);
+      });
+    });
+
+    /* Row click → edit */
+    tbody.querySelectorAll('tr.clickable').forEach(function(r){
+      r.addEventListener('click',function(){
+        var l=S.loads.find(function(x){return x.id===r.getAttribute('data-lid');});
+        if(l) openEditModal(l);
+      });
+    });
+
+    var cnt=S.loads.length;
+    if(badge){ badge.textContent=cnt; badge.style.display='inline'; }
+    if(meta) meta.textContent=cnt+' loads on record · Royal Carriers Inc';
+  }
+
+  /* ─── RATECON UPLOAD (hooks into existing demo dropzone) ─────────────── */
+
+  function wireRateconUpload() {
+    var inp=document.getElementById('rc-file-input');
+    if(!inp) return;
+    inp.addEventListener('change',function(){ handleRCFiles(this.files); });
+
+    var zone=document.getElementById('rc-upload-zone');
+    if(zone){
+      zone.addEventListener('dragover',function(e){ e.preventDefault(); zone.style.borderColor='var(--teal)'; zone.style.background='var(--teal-soft)'; });
+      zone.addEventListener('dragleave',function(){ zone.style.borderColor=''; zone.style.background=''; });
+      zone.addEventListener('drop',function(e){
+        e.preventDefault(); zone.style.borderColor=''; zone.style.background='';
+        handleRCFiles(e.dataTransfer.files);
+      });
+    }
+  }
+
+  function handleRCFiles(files) {
+    if(!files||!files.length) return;
+    var prog=document.getElementById('rc-progress');
+    var progText=document.getElementById('rc-progress-text');
+    var progBar=document.getElementById('rc-progress-bar');
+    var emptyEl=document.getElementById('rc-empty');
+    if(prog) prog.style.display='block';
+    if(emptyEl) emptyEl.style.display='none';
+
+    var total=files.length, done=0;
+    var promises=[];
+    Array.prototype.forEach.call(files, function(file){
+      if(progText) progText.textContent='Parsing '+file.name+' ('+( done+1)+' of '+total+')…';
+      var fd=new FormData(); fd.append('file',file);
+      var p=api('/api/loads/parse-ratecon',{method:'POST',body:fd})
+        .then(function(data){
+          done++;
+          if(progBar) progBar.style.width=Math.round(done/total*90)+'%';
+          var n=norm({
+            id:data.id, load_number:data.loadNumber||data.load_number,
+            driver_name:data.driverName||data.driver_name,
+            trailer_type:data.trailerType||data.trailer_type,
+            pickup_city:data.pickupCity||data.pickup_city,
+            pickup_state:data.pickupState||data.pickup_state,
+            pickup_date:data.pickupTime||data.pickup_date,
+            dropoff_city:data.dropoffCity||data.dropoff_city,
+            dropoff_state:data.dropoffState||data.dropoff_state,
+            dropoff_date:data.deliveryTime||data.dropoff_date,
+            rate:data.rate, loaded_miles:data.loadedMiles||data.loaded_miles,
+            rpm:data.rpm, broker_name:data.brokerName||data.broker_name,
+            broker_email:data.brokerEmail||data.broker_email,
+            broker_phone:data.brokerPhone||data.broker_phone,
+            status:'PENDING', cancelled:false,
+          });
+          if(TRUCK[n.driver]){
+            S.loads.unshift(n);
+            if(S.byDriver[n.driver]) S.byDriver[n.driver].unshift(n);
+          }
+          toast('Parsed '+file.name,'ok');
+          return n;
+        })
+        .catch(function(e){ toast('Failed: '+file.name+' — '+e.message,'err'); });
+      promises.push(p);
+    });
+
+    Promise.allSettled(promises).then(function(){
+      if(progBar) progBar.style.width='100%';
+      if(progText) progText.textContent='Done — '+done+' of '+total+' parsed';
+      setTimeout(function(){ if(prog) prog.style.display='none'; },1800);
+      repopulateRCTable();
+      renderPlan();
+      renderAnalytics();
+    });
+  }
+  window.handleRCFiles=handleRCFiles;
+  window.handleRCDrop=function(e){ handleRCFiles(e.dataTransfer.files); };
+
+  /* ─── CHROME EXTENSION POLL ──────────────────────────────────────────── */
+
+  function pollExtension() {
+    api('/api/demo/ratecon/latest').then(function(data){
+      if(!data||!data.id) return;
+      // Check if we already have it
+      if(S.loads.some(function(l){ return l.id===data.id; })) return;
+      var n=norm(data);
+      if(TRUCK[n.driver]){ S.loads.unshift(n); if(S.byDriver[n.driver]) S.byDriver[n.driver].unshift(n); }
+      repopulateRCTable(); renderPlan();
+      toast('New ratecon from Chrome extension: #'+n.loadNumber,'ok');
+    }).catch(function(){});
+    setTimeout(pollExtension, 15000); // poll every 15s
+  }
+
+  /* ─── AGENT SCENARIOS ────────────────────────────────────────────────── */
 
   function applyScenario(text) {
-    var t = (text || '').toLowerCase();
-    var matched = false;
-    ['Max', 'Monu', 'Paul'].forEach(function (d) {
-      if (t.indexOf(d.toLowerCase()) === -1) return;
-      if (/truck.*(down|broke|broken)|broke.*down|breakdown/.test(t)) {
-        state.scenarios[d] = { type: 'down' }; matched = true;
-      } else if (/home|back|saturday|friday|thursday|sunday/.test(t)) {
-        var days = ['saturday', 'friday', 'thursday', 'sunday', 'monday', 'tuesday', 'wednesday'];
-        var by = 'weekend';
-        for (var i = 0; i < days.length; i++) { if (t.indexOf(days[i]) > -1) { by = days[i].charAt(0).toUpperCase() + days[i].slice(1); break; } }
-        state.scenarios[d] = { type: 'home', by: by }; matched = true;
-      } else if (/sick|out|ill/.test(t)) {
-        state.scenarios[d] = { type: 'home', by: 'today' }; matched = true;
+    var t=(text||'').toLowerCase(), matched=false;
+    ['Max','Monu','Paul'].forEach(function(d){
+      if(t.indexOf(d.toLowerCase())===-1) return;
+      if(/truck.*(down|broke|broken)|broke.*down|breakdown/.test(t)){
+        S.scenarios[d]={type:'down'}; matched=true;
+      } else if(/home|back|saturday|friday|thursday|sunday/.test(t)){
+        var days=['saturday','friday','thursday','sunday','monday','tuesday','wednesday'];
+        var by='weekend';
+        for(var i=0;i<days.length;i++){ if(t.indexOf(days[i])>-1){by=days[i].charAt(0).toUpperCase()+days[i].slice(1);break;} }
+        S.scenarios[d]={type:'home',by:by}; matched=true;
+      } else if(/sick|out|ill/.test(t)){
+        S.scenarios[d]={type:'home',by:'today'}; matched=true;
       }
     });
-    if (matched) { renderPlan(); gotoScene(1); }
+    if(matched){ renderPlan(); var b=document.querySelector('.scene-btn[data-scene="1"]'); if(b) b.click(); }
     return matched;
   }
 
-  /* ── wire agent panel ───────────────────────────────────────────────── */
-
   function wireAgent() {
-    /* Relabel suggestion chips to Royal Carriers drivers */
-    var chips = [
-      { label: 'Max truck down', cmd: "Max's truck broke down" },
-      { label: 'Paul home Saturday', cmd: 'Paul needs to be home by Saturday' },
-      { label: 'Monu home Friday', cmd: 'Monu wants to be home by Friday' },
+    var chips=[
+      {label:'Max truck down', cmd:"Max's truck broke down"},
+      {label:'Paul home Saturday', cmd:'Paul needs to be home by Saturday'},
+      {label:'Monu home Friday', cmd:'Monu wants to be home by Friday'},
     ];
-    var suggWrap = document.querySelector('.wp-chat-suggestions');
-    if (suggWrap) {
-      suggWrap.innerHTML = chips.map(function (c) {
-        return '<button class="wp-chat-sugg" data-tm-cmd="' + c.cmd.replace(/"/g, '&quot;') + '">' + c.label + '</button>';
+    var suggWrap=document.querySelector('.wp-chat-suggestions');
+    if(suggWrap){
+      suggWrap.innerHTML=chips.map(function(c){
+        return '<button class="wp-chat-sugg" data-tc="'+c.cmd.replace(/"/g,'&quot;')+'">'+c.label+'</button>';
       }).join('');
-      suggWrap.querySelectorAll('[data-tm-cmd]').forEach(function (b) {
-        b.addEventListener('click', function (e) {
+      suggWrap.querySelectorAll('[data-tc]').forEach(function(b){
+        b.addEventListener('click',function(e){
           e.stopImmediatePropagation();
-          var inp = document.getElementById('wp-chat-input');
-          if (inp) inp.value = b.getAttribute('data-tm-cmd');
-          applyScenario(b.getAttribute('data-tm-cmd'));
-        }, true);
+          var inp=document.getElementById('wp-chat-input');
+          if(inp) inp.value=b.getAttribute('data-tc');
+          applyScenario(b.getAttribute('data-tc'));
+        },true);
       });
     }
-
-    /* Update placeholder text */
-    var input = document.getElementById('wp-chat-input');
-    if (input) {
-      input.setAttribute('placeholder', 'e.g. "Max\'s truck broke down" or "Paul home by Saturday"');
-      input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && applyScenario(input.value)) { e.preventDefault(); e.stopImmediatePropagation(); }
-      }, true);
+    var input=document.getElementById('wp-chat-input');
+    if(input){
+      input.setAttribute('placeholder','"Max\'s truck broke down" or "Paul home Saturday"');
+      input.addEventListener('keydown',function(e){
+        if(e.key==='Enter'&&applyScenario(input.value)){e.preventDefault();e.stopImmediatePropagation();}
+      },true);
     }
-
-    var sendBtn = document.getElementById('wp-chat-send');
-    if (sendBtn) {
-      sendBtn.addEventListener('click', function (e) {
-        var inp = document.getElementById('wp-chat-input');
-        if (inp && applyScenario(inp.value)) e.stopImmediatePropagation();
-      }, true);
+    var send=document.getElementById('wp-chat-send');
+    if(send){
+      send.addEventListener('click',function(e){
+        var inp=document.getElementById('wp-chat-input');
+        if(inp&&applyScenario(inp.value)) e.stopImmediatePropagation();
+      },true);
     }
   }
 
-  /* ── intercept Make optimal assignments ─────────────────────────────── */
+  /* ─── MAKE OPTIMAL ASSIGNMENTS ───────────────────────────────────────── */
 
   function wireOptimalBtn() {
-    var buildBtn = document.getElementById('build-trigger');
-    if (!buildBtn) return;
-    buildBtn.addEventListener('click', function () {
-      /* Show a brief "Optimizing…" state then just re-render our real schedule */
-      var pill = document.getElementById('wp-status-pill');
-      if (pill) { pill.textContent = 'Optimizing…'; pill.style.background = 'var(--amber-soft)'; pill.style.color = 'var(--amber)'; }
-      setTimeout(function () {
+    var btn=document.getElementById('build-trigger');
+    if(!btn) return;
+    btn.addEventListener('click',function(){
+      var pill=document.getElementById('wp-status-pill');
+      if(pill){pill.textContent='Optimizing…';pill.style.background='var(--amber-soft)';pill.style.color='var(--amber)';}
+      setTimeout(function(){
         renderPlan();
-        if (pill) { pill.textContent = 'Synced · just now'; pill.style.background = ''; pill.style.color = ''; }
-      }, 1400);
-    }, true);
+        if(pill){pill.textContent='Synced · just now';pill.style.background='';pill.style.color='';}
+      },1400);
+    },true);
   }
 
-  /* ── wire scene switch ──────────────────────────────────────────────── */
+  /* ─── SCENE SWITCH RERENDER ──────────────────────────────────────────── */
 
   function wireSceneSwitch() {
-    document.querySelectorAll('.scene-btn[data-scene]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        setTimeout(function () {
-          if (!state.ready) return;
-          renderPlan();
-          renderAnalytics();
-        }, 30);
+    document.querySelectorAll('.scene-btn[data-scene]').forEach(function(b){
+      b.addEventListener('click',function(){
+        setTimeout(function(){
+          if(!S.ready) return;
+          renderPlan(); renderAnalytics();
+        },30);
       });
     });
   }
 
-  /* ── boot ───────────────────────────────────────────────────────────── */
+  /* ─── BOOT ───────────────────────────────────────────────────────────── */
 
   function boot() {
     injectStyles();
-    loadData().then(function () {
+    loadData().then(function(){
       renderPlan();
       renderAnalytics();
+      repopulateRCTable();
+      wireRateconUpload();
       wireAgent();
-      wireSceneSwitch();
       wireOptimalBtn();
-      console.log('[TM-connect] ready — ' + state.loads.length + ' loads / ' + state.drivers.length + ' drivers');
+      wireSceneSwitch();
+      pollExtension();
+      console.log('[TM v2] Tier 0 connected — '+S.loads.length+' loads / '+S.drivers.length+' drivers');
     });
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 250); });
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',function(){setTimeout(boot,250);});
   } else {
-    setTimeout(boot, 250);
+    setTimeout(boot,250);
   }
 })();
