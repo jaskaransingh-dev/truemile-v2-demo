@@ -45,7 +45,7 @@ class Load(Base):
     source: Mapped[str] = mapped_column(String(20), nullable=False)  # gmail_extension | manual_upload
     driver_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("d2_drivers.id"), nullable=True)
 
-    load_number: Mapped[str | None] = mapped_column(String(100))
+    load_number: Mapped[str | None] = mapped_column(String(100), unique=True)
     driver_name: Mapped[str | None] = mapped_column(String(255))
     trailer_type: Mapped[str | None] = mapped_column(String(50))
 
